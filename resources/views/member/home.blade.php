@@ -1,0 +1,6 @@
+@extends('layouts.member')
+@section('title','Member Home')
+@section('content')
+<section class="member-welcome mb-4"><span class="eyebrow">YOUR LIBRARY, YOUR SPACE</span><h1>Welcome, {{ auth()->user()->name }}.</h1><p>Discover your next read and manage your library requests in one place.</p><div class="d-flex flex-wrap gap-2 mt-4"><a class="btn btn-primary" href="{{ route('member.catalog') }}"><i class="bi bi-search"></i>Explore Catalog</a><a class="btn btn-outline-primary" href="{{ route('member.requests') }}">My Requests</a></div></section>
+<div class="row g-4"><div class="col-md-6"><a class="card card-body library-link" href="{{ route('member.catalog') }}"><i class="bi bi-journals"></i><h2>Find your next book</h2><p>Catalog search and filters will be available when the book collection is added.</p><strong>Visit catalog <i class="bi bi-arrow-right"></i></strong></a></div><div class="col-md-6"><a class="card card-body library-link" href="{{ route('member.requests') }}"><i class="bi bi-bookmark-check"></i><h2>Keep track of requests</h2><p>Your issue requests and loan status will appear here when circulation opens.</p><strong>View requests <i class="bi bi-arrow-right"></i></strong></a></div></div>
+@endsection

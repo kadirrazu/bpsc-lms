@@ -1,0 +1,1 @@
+<link rel="icon" type="image/svg+xml" href="{{ asset('favicon-library.svg') }}"><meta name="theme-color" content="#3454d1">
