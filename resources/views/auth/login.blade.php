@@ -32,8 +32,9 @@
                 novalidate
             >
                 @csrf
+                <div class="row g-3">
 
-                <div class="mb-3">
+                <div class="col-12">
                     <label
                         for="email"
                         class="form-label required"
@@ -55,7 +56,7 @@
 
                 </div>
 
-                <div class="mb-3">
+                <div class="col-12">
                     <label
                         for="password"
                         class="form-label required"
@@ -75,18 +76,19 @@
 
                 </div>
 
-                <div class="form-footer">
+                <div class="col-12 form-footer mt-3">
                     <button
                         type="submit"
                         class="btn btn-primary w-100"
                     ><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> {{ __('Sign in') }}
                     </button>
                 </div>
+                </div>
             </form>
         </div>
     </div>
 
     <div class="text-center text-secondary mt-3">
-        {{ __('Authorized users only') }}
+        <a href="{{ route('register') }}">Join as a Library Member</a>
     </div>
 @endsection

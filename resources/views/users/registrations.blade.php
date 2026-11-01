@@ -1,0 +1,6 @@
+@extends('layouts.app')
+@section('title','Member Registration Requests')
+@section('content')
+<div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><div><h1>Member Registration Requests</h1><p class="text-secondary">Verify the applicant’s details before approving access.</p></div><a class="btn btn-outline-secondary align-self-start" href="{{ route('users.index') }}">Back to Users</a></div>
+<div class="card"><div class="table-responsive"><table class="table table-vcenter"><thead><tr><th>Applicant</th><th>Designation / Unit</th><th>Mobile Number</th><th>Requested</th><th>Review</th></tr></thead><tbody>@forelse($registrations as $entry)<tr><td><strong>{{ $entry->name }}</strong><div>{{ $entry->email }}</div></td><td>{{ $entry->designation?->name ?? 'Unavailable designation' }}<div>{{ \App\Support\Ui::unit($entry->unit) }}</div></td><td>{{ $entry->mobile_number }}</td><td>{{ $entry->created_at->format('d M Y, h:i A') }}</td><td><form method="post" action="{{ route('users.registrations.approve',$entry) }}">@csrf<button class="btn btn-sm btn-primary">Approve Member</button></form></td></tr>@empty<tr><td colspan="5" class="text-center text-secondary py-5">No pending registration requests.</td></tr>@endforelse</tbody></table></div></div><div class="mt-3">{{ $registrations->links() }}</div>
+@endsection

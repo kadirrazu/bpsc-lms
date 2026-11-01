@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Designation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -12,28 +11,34 @@ class StaffProfileController extends Controller
 {
     public function edit(Request $request)
     {
-        return view('users.profile', ['user' => $request->user(), 'designations' => Designation::where('is_active', true)->orderBy('sort_order')->get()]);
+        return view('users.profile', ['user' => $request->user()->load('designation')]);
     }
 
     public function update(Request $request)
     {
-        abort_if($request->user()->role === \App\Enums\UserRole::Member, 403);
         $user = $request->user();
         $data = $request->validate([
-            'name' => 'required|string|max:255', 'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'designation_id' => ['required', 'integer', Rule::exists('designations', 'id')->where('is_active', true)],
-            'preferred_locale' => 'sometimes|in:en', 'unit' => 'prohibited', 'role' => 'prohibited', 'is_active' => 'prohibited', 'user_id' => 'prohibited', 'id' => 'prohibited', 'deleted_at' => 'prohibited',
+            'name' => 'required|string|max:255',
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'designation_id' => 'missing',
+            'unit' => 'missing',
+            'role' => 'missing',
+            'is_active' => 'missing',
+            'preferred_locale' => 'missing',
+            'user_id' => 'missing',
+            'id' => 'missing',
+            'deleted_at' => 'missing',
+            'password' => 'missing',
+            'password_confirmation' => 'missing',
+            'auth_version' => 'missing',
+            'remember_token' => 'missing',
+            'email_verified_at' => 'missing',
         ]);
-        if ($data['email'] !== $user->email) {
-            $user->email_verified_at = null;
-        }
-        $locale = $data['preferred_locale'] ?? null;
-        unset($data['preferred_locale']);
-        DB::transaction(function () use ($user, $data, $locale) {
-            $user->fill($data);
-            if ($locale) {
-                $user->preferred_locale = $locale;
-            } $user->save();
+        DB::transaction(function () use ($user, $data) {
+            if ($data['email'] !== $user->email) {
+                $user->email_verified_at = null;
+            }
+            $user->fill(['name' => $data['name'], 'email' => $data['email']])->save();
         });
         if ($request->is('api/*')) {
             return response()->json(['data' => $user]);

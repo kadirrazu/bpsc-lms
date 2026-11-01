@@ -21,8 +21,8 @@
 </head>
 
 <body class="d-flex flex-column library-auth">
-    <div class="page page-center">
-        <div class="container container-tight py-4">
+    <main class="auth-main">
+        <div class="container @yield('auth-container-class', 'container-tight') py-4">
             <div class="auth-brand product-name mb-2"><i class="bi bi-book" aria-hidden="true"></i> 
                 {{ __('Library Management System') }}
             </div>
@@ -31,10 +31,9 @@
                 <strong lang="en">Bangladesh Public Service Commission (BPSC)</strong>
             </div>
 
-            <div class="d-flex justify-content-center mb-3"></div>
             @yield('content')
         </div>
-    </div>
+    </main>
 
     @include('shared.footer')
     @stack('scripts')

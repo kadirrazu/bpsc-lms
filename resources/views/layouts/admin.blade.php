@@ -30,10 +30,13 @@
             <div class="collapse navbar-collapse" id="navbar-menu"><ul class="navbar-nav gap-md-2">
 <li class="nav-item"><a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}"><i class="bi bi-grid-1x2"></i>Dashboard</a></li>
 @can('manage-library')
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('books.*') ? 'active':'' }}" href="{{ route('books.index') }}"><i class="bi bi-journals"></i>Books</a></li>
+<li class="nav-item"><a class="nav-link" href="{{ route('issue-requests.index') }}"><i class="bi bi-bookmark-check"></i>Issue Requests</a></li>
+<li class="nav-item dropdown"><button class="nav-link dropdown-toggle border-0 bg-transparent {{ request()->routeIs('authors.*','publishers.*','categories.*') ? 'active':'' }}" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-collection"></i>Catalog Setup</button><div class="dropdown-menu"><a class="dropdown-item" href="{{ route('authors.index') }}"><i class="bi bi-person"></i>Authors</a><a class="dropdown-item" href="{{ route('publishers.index') }}"><i class="bi bi-building"></i>Publishers</a><a class="dropdown-item" href="{{ route('categories.index') }}"><i class="bi bi-tags"></i>Categories</a></div></li>
 <li class="nav-item dropdown"><button class="nav-link dropdown-toggle border-0 bg-transparent {{ request()->routeIs('users.*','designations.*','units.*','roles.*','audit-logs.*') ? 'active' : '' }}" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-sliders2"></i>Administration</button>
 <div class="dropdown-menu administration-menu">
 <h6 class="dropdown-header">People & Organization</h6>
-<a class="dropdown-item" href="{{ route('users.index') }}"><i class="bi bi-people"></i>Users</a>
+@can('manage-users')<a class="dropdown-item" href="{{ route('users.index') }}"><i class="bi bi-people"></i>Users</a><a class="dropdown-item" href="{{ route('users.registrations') }}"><i class="bi bi-person-plus" aria-hidden="true"></i>Member Registration Requests</a>@endcan
 <a class="dropdown-item" href="{{ route('designations.index') }}"><i class="bi bi-person-badge"></i>Designations</a>
 @can('manage-system')<a class="dropdown-item" href="{{ route('units.index') }}"><i class="bi bi-building"></i>Units</a><div class="dropdown-divider"></div><a class="dropdown-item" href="{{ route('roles.index') }}"><i class="bi bi-shield-lock"></i>Roles & Permissions</a>@endcan
 @can('view-logs')<a class="dropdown-item" href="{{ route('audit-logs.index') }}"><i class="bi bi-clock-history"></i>Audit Logs</a>@endcan

@@ -124,6 +124,7 @@
         @enderror
     </div>
 
+    <div class="col-md-6"><label class="form-label" for="mobile_number">Mobile Number <span class="text-secondary">(Optional)</span></label><input class="form-control @error('mobile_number') is-invalid @enderror" type="tel" inputmode="numeric" pattern="[0-9]{11}" minlength="11" maxlength="11" id="mobile_number" name="mobile_number" value="{{ old('mobile_number',$user->mobile_number ?? '') }}" placeholder="01912234567">@error('mobile_number')<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
     <div class="col-md-6">
         <label for="password" class="form-label"><i class="bi bi-lock" aria-hidden="true"></i> 
             {{ __('Password') }}

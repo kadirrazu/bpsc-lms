@@ -21,6 +21,7 @@ class User extends Authenticatable
     protected $attributes = ['role' => 'library_member', 'is_active' => true, 'auth_version' => 1, 'preferred_locale' => 'en'];
 
     protected $fillable = [
+        'mobile_number',
         'name',
         'email',
         'password',

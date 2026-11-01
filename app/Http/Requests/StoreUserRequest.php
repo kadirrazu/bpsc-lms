@@ -12,12 +12,13 @@ class StoreUserRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-library');
+        return $this->user()?->can('manage-users');
     }
 
     public function rules(): array
     {
         return [
+            'mobile_number' => ['nullable','string','regex:/^[0-9]{11}$/'],
             'name' => [
                 'required',
                 'string',

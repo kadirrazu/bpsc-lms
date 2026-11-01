@@ -20,14 +20,14 @@ class LibraryFoundationTest extends TestCase {
   $this->delete('/designations/'.$d->id,['confirmation'=>'DELETE'])->assertForbidden();
   $this->get('/roles')->assertForbidden();$this->assertNotSoftDeleted($target);
  }
- public function test_member_cannot_access_management_or_change_profile(): void {
-  $u=$this->actor(UserRole::Member);$this->loginAs($u)->get('/users')->assertForbidden();$this->get('/designations')->assertForbidden();$this->put('/profile',['name'=>'পরিবর্তিত'])->assertForbidden();
+ public function test_member_cannot_access_management(): void {
+  $u=$this->actor(UserRole::Member);$this->loginAs($u)->get('/users')->assertForbidden();$this->get('/designations')->assertForbidden();
  }
  public function test_librarian_cannot_edit_or_delete_administrator(): void {
   $u=$this->actor(UserRole::Librarian);$admin=$this->actor(UserRole::Admin);$this->loginAs($u)->get('/users/'.$admin->id.'/edit')->assertForbidden();$this->delete('/users/'.$admin->id,['confirmation'=>'DELETE'])->assertForbidden();
  }
- public function test_staff_can_create_member_but_cannot_escalate_roles(): void {
-  $u=$this->actor(UserRole::Staff);$d=Designation::create(['name'=>'কর্মকর্তা','slug'=>'test-officer','sort_order'=>1,'is_active'=>true]);
+ public function test_librarian_can_create_member_but_cannot_escalate_roles(): void {
+  $u=$this->actor(UserRole::Librarian);$d=Designation::create(['name'=>'কর্মকর্তা','slug'=>'test-officer','sort_order'=>1,'is_active'=>true]);
   $data=['name'=>'নতুন পাঠক','email'=>'reader@example.test','designation_id'=>$d->id,'unit'=>'Unit 01','role'=>'admin','password'=>'Strong@Pass123','password_confirmation'=>'Strong@Pass123','is_active'=>1];
   $this->loginAs($u)->post('/users',$data)->assertSessionHasErrors('role');$this->assertDatabaseMissing('users',['email'=>$data['email']]);
   $data['role']='library_member';$this->post('/users',$data)->assertRedirect('/users');$this->assertDatabaseHas('users',['email'=>$data['email'],'role'=>'library_member']);

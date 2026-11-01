@@ -50,3 +50,25 @@ Artisan::command('library:create-admin', function () {
 })->purpose('Create an administrator using interactive credentials');
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 
+
+Artisan::command('library:purge-cover-files', function () {
+ $this->info('Removed '.app(\App\Services\Library\CoverStorage::class)->purge().' unused cover files.');
+})->purpose('Retry pending book cover file cleanup');
+Schedule::command('library:purge-cover-files')->everyMinute()->withoutOverlapping();
+
+Artisan::command('library:benchmark-catalog {--query=} {--accession=} {--call=} {--match=exact} {--runs=7} {--json}', function () {
+    $filters=['q'=>trim((string)$this->option('query')),'accession_number'=>trim((string)$this->option('accession')),'call_number'=>trim((string)$this->option('call')),'number_match'=>$this->option('match')];
+    $validation=Validator::make($filters+['runs'=>$this->option('runs')],['q'=>'nullable|string|max:150','accession_number'=>'nullable|string|max:100','call_number'=>'nullable|string|max:100','number_match'=>'required|in:exact,prefix,partial','runs'=>'required|integer|min:1|max:20']);
+    if($validation->fails()){$this->error($validation->errors()->first());return 1;}
+    $search=app(\App\Services\Library\BookSearch::class);$runs=(int)$this->option('runs');$times=[];$matches=0;
+    for($run=0;$run<$runs;$run++){
+        $start=hrtime(true);$query=$search->query($filters);$matches=(clone $query)->count();
+        (clone $query)->orderByDesc('books.id')->limit(20)->pluck('books.id');
+        $times[]=(hrtime(true)-$start)/1e6;
+    }
+    sort($times);$middle=intdiv($runs,2);$median=$runs%2 ? $times[$middle] : ($times[$middle-1]+$times[$middle])/2;
+    $result=['driver'=>DB::getDriverName(),'books'=>\App\Models\Book::count(),'matches'=>$matches,'runs'=>$runs,'median_ms'=>round($median,2),'max_ms'=>round(max($times),2),'scope'=>'SQL count plus first 20 IDs, without search-result cache, relation hydration, rendering or network'];
+    if($this->option('json'))$this->line(json_encode($result,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+    else {$this->table(['Driver','Books','Matches','Median ms','Max ms'],[[$result['driver'],$result['books'],$matches,$result['median_ms'],$result['max_ms']]]);$this->line($result['scope']);}
+    return 0;
+})->purpose('Measure catalog queries against existing data without changing catalog records');

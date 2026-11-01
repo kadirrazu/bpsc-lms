@@ -12,7 +12,7 @@ class UpdateUserRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-library') && $this->user()->can('manage-user', $this->route('user'));
+        return $this->user()?->can('manage-users') && $this->user()->can('manage-user', $this->route('user'));
     }
 
     public function rules(): array
@@ -20,6 +20,7 @@ class UpdateUserRequest extends FormRequest
         $user = $this->route('user');
 
         return [
+            'mobile_number' => ['nullable','string','regex:/^[0-9]{11}$/'],
             'name' => [
                 'required',
                 'string',
