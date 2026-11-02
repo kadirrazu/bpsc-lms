@@ -6,8 +6,8 @@ use Illuminate\Validation\ValidationException;
 class Book extends Model {
  use SoftDeletes;
  protected $attributes=['number_of_copies'=>1,'total_issue_count'=>0];
- protected $fillable=['accession_number','title_bn','title_en','publisher_id','call_number','shelf_number','publication_year','number_of_copies','cover_path'];
- protected function casts(): array {return ['publication_year'=>'integer','number_of_copies'=>'integer','total_issue_count'=>'integer'];}
+ protected $fillable=['accession_number','title_bn','title_en','publisher_id','call_number','shelf_number','publication_year','number_of_copies','cover_path','price','collection_method'];
+ protected function casts(): array {return ['price'=>'decimal:2','publication_year'=>'integer','number_of_copies'=>'integer','total_issue_count'=>'integer'];}
  public function authors(): BelongsToMany {return $this->belongsToMany(Author::class,'book_authors')->orderBy('title_bn');}
  public function publisher(): BelongsTo {return $this->belongsTo(Publisher::class);}
  public function categories(): BelongsToMany {return $this->belongsToMany(Category::class,'book_categories')->orderBy('title_bn');}

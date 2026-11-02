@@ -16,7 +16,7 @@ class LibraryObserver
 {
     private function fields(Model $m): array
     {
-        if ($m instanceof Book) return ['accession_number','title_bn','title_en','publisher_id','call_number','shelf_number','publication_year','number_of_copies','cover_path','deleted_at'];
+        if ($m instanceof Book) return ['accession_number','title_bn','title_en','publisher_id','call_number','shelf_number','publication_year','number_of_copies','price','collection_method','cover_path','deleted_at'];
         if ($m instanceof NamedCatalogEntry) return ['title_bn','title_en'];
         if ($m instanceof BookLoan) return ['book_id','user_id','quantity','issued_at','returned_at'];
         if ($m instanceof Unit) return ['code','name','sort_order','is_active'];

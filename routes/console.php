@@ -11,13 +11,24 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 
 Artisan::command('library:create-admin', function () {
+    if (! app()->environment(['local', 'development'])) {
+        $this->error('This command is available only in development (APP_ENV=local or development).');
+        return 1;
+    }
+    $designations = Designation::where('is_active', true)->orderBy('sort_order')->orderBy('name')->pluck('name','id')->all();
+    if (! $designations) {
+        $this->error('No active designations found. Run php artisan db:seed --class=DesignationSeeder first.');
+        return 1;
+    }
+    $selectedDesignation = $this->choice('Designation', array_values($designations), 0);
+    $designationId = array_search($selectedDesignation, $designations, true);
     $name = $this->ask('Administrator name');
     $email = strtolower((string) $this->ask('Email address'));
     $password = $this->secret('Password (8+ characters, mixed case, number and symbol)');
     $confirm = $this->secret('Confirm password');
     $unitLabels = app(Catalog::class)->unitLabels('users');
     if (! $unitLabels) {
-        $this->error('Run php artisan db:seed --class=DesignationSeeder first.');
+        $this->error('No active units found. Run php artisan db:seed --class=UnitSeeder first.');
 
         return 1;
     }
@@ -34,20 +45,16 @@ Artisan::command('library:create-admin', function () {
 
         return 1;
     }
-    $designation = Designation::where('slug', 'system-manager')->first();
-    if (! $designation) {
-        $this->error('Run php artisan db:seed --class=DesignationSeeder first.');
-
-        return 1;
-    }
-    DB::transaction(function () use ($name, $email, $password, $designation, $unit) {
+    DB::transaction(function () use ($name, $email, $password, $designationId, $unit) {
+        $designation = Designation::whereKey($designationId)->where('is_active',true)->lockForUpdate()->first();
+        if (! $designation) throw \Illuminate\Validation\ValidationException::withMessages(['designation'=>'Selected designation is no longer active. Try again.']);
         app(Catalog::class)->lockUnit($unit, 'users');
         User::create(['name' => $name, 'email' => $email, 'password' => $password, 'designation_id' => $designation->id, 'unit' => $unit, 'role' => UserRole::Admin, 'is_active' => true]);
     });
     $this->info('Administrator created. No default password was saved.');
 
     return 0;
-})->purpose('Create an administrator using interactive credentials');
+})->purpose('Development only: create an administrator using interactive credentials');
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 
 

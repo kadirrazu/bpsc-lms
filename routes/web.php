@@ -21,6 +21,11 @@ Route::middleware('auth')->group(function () {
  Route::get('/issue-requests',[\App\Http\Controllers\BookIssueRequestController::class,'index'])->middleware('can:manage-library')->name('issue-requests.index');
  Route::post('/issue-requests/{issueRequest}/review',[\App\Http\Controllers\BookIssueRequestController::class,'review'])->middleware('can:manage-library')->name('issue-requests.review');
  Route::post('/loans/{loan}/return',[\App\Http\Controllers\BookIssueRequestController::class,'returned'])->middleware('can:manage-library')->name('loans.return');
+ Route::prefix('catalog-import/{kind}')->where(['kind'=>'books|authors|publishers|categories'])->middleware('can:manage-library')->group(function(){
+  Route::get('/',[\App\Http\Controllers\CatalogImportController::class,'index'])->name('catalog-import.index');
+  Route::get('/sample',[\App\Http\Controllers\CatalogImportController::class,'sample'])->name('catalog-import.sample');
+  Route::post('/',[\App\Http\Controllers\CatalogImportController::class,'store'])->middleware('throttle:10,1')->name('catalog-import.store');
+ });
  Route::resource('books',\App\Http\Controllers\BookController::class)->middleware('can:manage-library');
  foreach(['authors','publishers','categories'] as $kind){
   Route::prefix($kind)->name($kind.'.')->middleware('can:manage-library')->group(function()use($kind){
