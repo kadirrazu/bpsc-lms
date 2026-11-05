@@ -67,6 +67,11 @@ class User extends Authenticatable
         });
     }
 
+    public function loans(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(BookLoan::class);
+    }
+
     public function designation(): BelongsTo
     {
         return $this->belongsTo(Designation::class);

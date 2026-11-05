@@ -40,12 +40,12 @@ class DashboardAndSearchTest extends TestCase
     }
     public function test_dashboard_has_real_stats_latest_five_books_and_latest_five_issues(): void
     {
-        $this->login();$member=User::factory()->create(['role'=>UserRole::Member]);$books=[];$loans=[];
+        $this->login();$members=User::factory()->count(3)->create(['role'=>UserRole::Member]);$books=[];$loans=[];
         for($i=1;$i<=7;$i++)$books[]=$this->book($i);
-        for($i=0;$i<6;$i++)$loans[]=BookLoan::create(['book_id'=>$books[$i]->id,'user_id'=>$member->id,'quantity'=>1,'issued_at'=>now()->subMinutes(10-$i)]);
+        for($i=0;$i<6;$i++)$loans[]=BookLoan::create(['book_id'=>$books[$i]->id,'user_id'=>$members[$i%3]->id,'quantity'=>1,'issued_at'=>now()->subMinutes(10-$i)]);
         $loans[0]->update(['returned_at'=>now()]);
         $this->get('/dashboard')->assertOk()->assertSee('Latest Books')->assertSee('Latest Issues')
-            ->assertViewHas('stats',fn($stats)=>$stats['books']===7 && $stats['copies']===21 && $stats['issued']===5 && $stats['users']===2 && $stats['members']===1)
+            ->assertViewHas('stats',fn($stats)=>$stats['books']===7 && $stats['copies']===21 && $stats['issued']===5 && $stats['users']===4 && $stats['members']===3)
             ->assertViewHas('recentBooks',fn($rows)=>$rows->count()===5 && $rows->first()->id===$books[6]->id)
             ->assertViewHas('recentIssues',fn($rows)=>$rows->count()===5 && $rows->first()->id===$loans[5]->id);
     }
@@ -122,7 +122,7 @@ class DashboardAndSearchTest extends TestCase
     {
         $this->login();$book=$this->book(1);$search=app(BookSearch::class);$request=Request::create('/books','GET');
         $first=$search->paginate($request,[]);$this->assertSame(0,$first->first()->total_issue_count);
-        $loan=BookLoan::create(['book_id'=>$book->id,'quantity'=>2,'issued_at'=>now()]);
+        $loan=BookLoan::create(['book_id'=>$book->id,'user_id'=>User::factory()->create()->id,'quantity'=>2,'issued_at'=>now()]);
         $during=$search->paginate($request,[]);$this->assertSame(1,$during->first()->total_issue_count);$this->assertSame(2,(int)$during->first()->issued_copies);
         $loan->update(['returned_at'=>now()]);$after=$search->paginate($request,[]);$this->assertSame(0,(int)$after->first()->issued_copies);
     }

@@ -25,6 +25,11 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        $this->app->scoped(\App\Services\Library\BorrowingPolicy::class,fn()=>new \App\Services\Library\BorrowingPolicy);
+    }
+
     public function boot(): void
     {
         Paginator::defaultView('shared.pagination');

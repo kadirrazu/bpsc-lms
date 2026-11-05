@@ -250,4 +250,22 @@ class BookCatalogTest extends TestCase
         try {$this->loan($book);$this->fail('Expected deleted book validation.');}catch(ValidationException $error){$this->assertArrayHasKey('book_id',$error->errors());}
         $this->assertSame(1,Book::withTrashed()->findOrFail($book->id)->total_issue_count);
     }
+
+    public function test_edit_preserves_own_accession_but_rejects_another_books_number(): void
+    {
+        $this->loginRole();$first=$this->book(['accession_number'=>'001']);$second=$this->book(['accession_number'=>'002']);
+        $this->put('/books/'.$first->id,$this->data('001'))->assertRedirect('/books/'.$first->id);
+        $this->put('/books/'.$second->id,$this->data('001'))->assertSessionHasErrors('accession_number');
+        $this->assertSame('002',$second->fresh()->accession_number);
+        $this->delete('/books/'.$first->id,['confirmation'=>'DELETE'])->assertRedirect('/books');
+        $this->put('/books/'.$second->id,$this->data('001'))->assertSessionHasErrors('accession_number');
+        $this->assertSame('002',$second->fresh()->accession_number);
+    }
+    public function test_database_rejects_duplicate_accession_even_when_validation_is_bypassed(): void
+    {
+        $this->loginRole();$first=$this->book();$data=$first->only(['accession_number','title_bn','publisher_id','call_number','number_of_copies']);
+        $first->delete();
+        $this->expectException(\Illuminate\Database\QueryException::class);
+        \Illuminate\Support\Facades\DB::table('books')->insert($data);
+    }
 }

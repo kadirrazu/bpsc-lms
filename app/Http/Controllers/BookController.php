@@ -27,7 +27,7 @@ class BookController extends Controller {
  public function edit(Request $r,Book $book){Gate::authorize('manage-library');$book->load(['authors','publisher','categories']);return view('books.form',array_merge(compact('book'),$this->selectedEntries($r,$book)));}
  public function show(Book $book){Gate::authorize('manage-library');return $this->details($book,false);}
  public function memberShow(Book $book){Gate::authorize('member-portal');return $this->details($book,true);}
- private function details(Book $book,bool $member){$book->load(['authors','publisher','categories']);$issued=$book->activeLoanQuantity();$activity=Gate::allows('view-logs') ? AuditLog::where('subject_type','Book')->where('subject_id',$book->id)->latest('id')->limit(20)->get() : null;return view('books.show',compact('book','member','issued','activity'));}
+ private function details(Book $book,bool $member){$book->load(['authors','publisher','categories']);$issued=$book->activeLoanQuantity();$memberLoan=$member ? $book->loans()->where('user_id',auth()->id())->whereNull('returned_at')->latest('issued_at')->first() : null;$activity=Gate::allows('view-logs') ? AuditLog::where('subject_type','Book')->where('subject_id',$book->id)->latest('id')->limit(20)->get() : null;return view('books.show',compact('book','member','issued','activity','memberLoan'));}
  private function selectedEntries(Request $r,?Book $book=null): array {
   $selected=[];
   foreach(['author'=>Author::class,'publisher'=>Publisher::class,'category'=>Category::class] as $key=>$model){$id=$r->routeIs('books.create','books.edit') ? old($key.'_id',$r->input($key.'_id',$key==='publisher' ? $book?->publisher_id : null)) : $r->input($key.'_id');$selected[$key.'Selection']=is_scalar($id)?$model::find($id):null;}

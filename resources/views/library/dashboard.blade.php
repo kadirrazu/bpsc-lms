@@ -2,7 +2,7 @@
 @section('title','Dashboard')
 @section('content')
 
-<section class="card welcome-card mb-4"><div class="card-body"><div class="d-flex align-items-center gap-3"><span class="welcome-icon"><i class="bi bi-book-half"></i></span><div><span class="eyebrow mb-1">YOUR LIBRARY AT A GLANCE</span><h1>Welcome back, {{ auth()->user()->name }}.</h1><p class="text-secondary mb-0">Here is the latest activity across your collection.</p></div></div><span class="welcome-date"><i class="bi bi-calendar3 me-2"></i>{{ now()->format('d M Y') }}</span></div></section>
+<section class="card welcome-card mb-4"><div class="card-body"><div class="d-flex align-items-center gap-3"><span class="welcome-icon"><i class="bi bi-book-half"></i></span><div><span class="eyebrow mb-1">YOUR LIBRARY AT A GLANCE</span><h1>Welcome back, {{ auth()->user()->name }}.</h1><p class="text-secondary mb-0">Explore the library catalog and access the services available to you.</p></div></div><span class="welcome-date"><i class="bi bi-calendar3 me-2"></i>{{ now()->format('d M Y') }}</span></div></section>
 @can('manage-users')<a class="card card-body mb-3 text-decoration-none" href="{{ route('users.registrations') }}"><strong>Pending Member Registrations: {{ \App\Models\MemberRegistration::where('status','pending')->count() }}</strong><span class="text-secondary small">Review registration requests</span></a>@endcan
 <div class="row g-3 mb-4">
 @foreach(['books'=>['Total Books','bi-journals','indigo'],'copies'=>['Total Copies','bi-stack','teal'],'issued'=>['Copies Issued','bi-box-arrow-up-right','amber'],'users'=>['Total Users','bi-people','purple']] as $key=>$card)

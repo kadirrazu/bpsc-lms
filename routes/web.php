@@ -9,15 +9,26 @@ Route::middleware('guest')->group(function(){
 Route::middleware('auth')->group(function () {
  Route::get('/dashboard',[\App\Http\Controllers\DashboardController::class,'index'])->name('dashboard');
  Route::middleware('can:member-portal')->group(function () {
-  Route::view('/member','member.home')->name('member.home');
+  Route::get('/member',[\App\Http\Controllers\MemberHomeController::class,'index'])->name('member.home');
   Route::get('/member/catalog',[\App\Http\Controllers\BookController::class,'catalog'])->name('member.catalog');
   Route::get('/member/catalog/{book}',[\App\Http\Controllers\BookController::class,'memberShow'])->name('member.books.show');
+  Route::post('/member/requests/{issueRequest}/withdraw',[\App\Http\Controllers\BookIssueRequestController::class,'withdraw'])->name('member.requests.withdraw');
   Route::get('/member/requests',[\App\Http\Controllers\BookIssueRequestController::class,'mine'])->name('member.requests');
   Route::post('/member/catalog/{book}/request',[\App\Http\Controllers\BookIssueRequestController::class,'store'])->name('member.books.request');
  });
  Route::get('/catalog/{kind}/{entry}',[\App\Http\Controllers\BookController::class,'entity'])->whereIn('kind',['authors','publishers','categories'])->whereNumber('entry')->name('catalog.entity');
  Route::get('/books/{book}/cover',[\App\Http\Controllers\BookController::class,'cover'])->name('books.cover');
  Route::get('/catalog-options/{kind}',[\App\Http\Controllers\BookController::class,'options'])->middleware(['can:view-catalog','throttle:120,1'])->name('catalog.options');
+ Route::middleware('can:manage-library')->group(function(){
+  Route::get('/loans/create',[\App\Http\Controllers\LoanController::class,'create'])->name('loans.create');
+  Route::post('/loans',[\App\Http\Controllers\LoanController::class,'store'])->name('loans.store');
+  Route::get('/loan-options/{kind}',[\App\Http\Controllers\LoanController::class,'options'])->whereIn('kind',['books','members'])->middleware('throttle:120,1')->name('loans.options');
+ });
+ Route::middleware('can:manage-library')->group(function(){
+  Route::get('/issue-register',[\App\Http\Controllers\IssueRegisterController::class,'index'])->name('issue-register.index');
+  Route::get('/issue-register/export',[\App\Http\Controllers\IssueRegisterController::class,'export'])->name('issue-register.export');
+  Route::post('/loans/{loan}/{action}',[\App\Http\Controllers\IssueRegisterController::class,'action'])->whereIn('action',['reminder','renew','fine','clear-fine'])->name('issue-register.action');
+ });
  Route::get('/issue-requests',[\App\Http\Controllers\BookIssueRequestController::class,'index'])->middleware('can:manage-library')->name('issue-requests.index');
  Route::post('/issue-requests/{issueRequest}/review',[\App\Http\Controllers\BookIssueRequestController::class,'review'])->middleware('can:manage-library')->name('issue-requests.review');
  Route::post('/loans/{loan}/return',[\App\Http\Controllers\BookIssueRequestController::class,'returned'])->middleware('can:manage-library')->name('loans.return');
@@ -55,5 +66,7 @@ Route::middleware('auth')->group(function () {
   Route::delete('/designations/{designation}',[DesignationController::class,'destroy'])->middleware('can:delete-library')->name('designations.destroy');
  });
  Route::get('/audit-logs',[AuditLogController::class,'index'])->middleware('can:view-logs')->name('audit-logs.index');
+ Route::get('/borrowing-settings',[\App\Http\Controllers\BorrowingSettingsController::class,'edit'])->middleware('can:manage-system')->name('borrowing-settings.edit');
+ Route::put('/borrowing-settings',[\App\Http\Controllers\BorrowingSettingsController::class,'update'])->middleware('can:manage-system')->name('borrowing-settings.update');
  Route::get('/roles',fn()=>view('library.roles'))->middleware('can:manage-system')->name('roles.index');
 });

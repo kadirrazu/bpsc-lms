@@ -90,4 +90,16 @@ class CatalogImportAndAdminTest extends TestCase {
   $this->app->detectEnvironment(fn()=>'development');Designation::query()->update(['is_active'=>false]);
   $this->artisan('library:create-admin')->expectsOutput('No active designations found. Run php artisan db:seed --class=DesignationSeeder first.')->assertExitCode(1);$this->assertDatabaseCount('users',0);
  }
+
+ public function test_import_rejects_existing_and_archived_accession_without_partial_writes(): void {
+  $this->login();$this->masterData();
+  $this->post(route('catalog-import.store','books'),['file'=>$this->upload(CatalogImport::BOOK_HEADERS,[$this->bookRow()])])->assertRedirect(route('books.index'));
+  $existing=Book::firstOrFail();
+  foreach([false,true] as $archived){
+   if($archived)$existing->delete();
+   $file=$this->upload(CatalogImport::BOOK_HEADERS,[$this->bookRow('000002'),$this->bookRow()]);
+   $this->post(route('catalog-import.store','books'),['file'=>$file])->assertSessionHasErrors('file');
+   $this->assertSame(1,Book::withTrashed()->count());$this->assertDatabaseMissing('books',['accession_number'=>'000002']);
+  }
+ }
 }
