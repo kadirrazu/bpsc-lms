@@ -3,6 +3,9 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\{User,Book,BookLoan,Publisher,Author,LoanReminder};
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 class IssueRegisterActionsTest extends TestCase {
  use RefreshDatabase;
@@ -33,13 +36,26 @@ class IssueRegisterActionsTest extends TestCase {
  }
  public function test_renewal_extends_due_date_without_new_issue_and_blocks_duplicate_confirmation(): void {
   $this->freezeTime();$this->login($this->operator());$loan=$this->issue($this->member());$this->travel(16)->days();$due=now()->startOfSecond();$count=$loan->book->total_issue_count;
-  $this->action($loan,'renew',['days'=>15,'expected_renewal_count'=>0])->assertRedirect();$this->assertTrue($loan->fresh()->due_at->equalTo($due->addDays(15)));$this->assertSame(1,$loan->fresh()->renewal_count);$this->assertDatabaseCount('book_loans',1);$this->assertSame($count,$loan->book->fresh()->total_issue_count);
-  $this->action($loan,'renew',['days'=>15,'expected_renewal_count'=>0])->assertSessionHasErrors('loan');$this->assertSame(1,$loan->fresh()->renewal_count);$this->assertDatabaseHas('audit_logs',['action'=>'book.renewed']);
+  $this->action($loan,'renew',['expected_renewal_count'=>0])->assertRedirect();$this->assertTrue($loan->fresh()->due_at->equalTo($due->addDays(15)));$this->assertSame(1,$loan->fresh()->renewal_count);$this->assertDatabaseCount('book_loans',1);$this->assertSame($count,$loan->book->fresh()->total_issue_count);
+  $this->action($loan,'renew',['expected_renewal_count'=>0])->assertSessionHasErrors('loan');$this->assertSame(1,$loan->fresh()->renewal_count);$this->assertDatabaseHas('audit_logs',['action'=>'book.renewed']);
  }
  public function test_overdue_renewal_uses_today_and_returned_loans_reject_renewal_and_reminders(): void {
-  $this->freezeTime();$this->login($this->operator());$loan=$this->issue($this->member());$this->travel(20)->days();$expected=now()->addDays(7)->startOfSecond();
-  $this->action($loan,'renew',['days'=>7,'expected_renewal_count'=>0])->assertRedirect();$this->assertTrue($loan->fresh()->due_at->equalTo($expected));
-  $loan->refresh()->update(['returned_at'=>now()]);$this->action($loan,'renew',['days'=>15,'expected_renewal_count'=>1])->assertSessionHasErrors('loan');$this->action($loan,'reminder')->assertSessionHasErrors('loan');$this->travelBack();
+  $this->freezeTime();$this->login($this->operator());$loan=$this->issue($this->member());$this->travel(20)->days();$expected=now()->addDays(15)->startOfSecond();
+  $this->action($loan,'renew',['expected_renewal_count'=>0])->assertRedirect();$this->assertTrue($loan->fresh()->due_at->equalTo($expected));
+  $loan->refresh()->update(['returned_at'=>now()]);$this->action($loan,'renew',['expected_renewal_count'=>1])->assertSessionHasErrors('loan');$this->action($loan,'reminder')->assertSessionHasErrors('loan');$this->travelBack();
+ }
+ public function test_third_renewal_is_blocked_by_the_default_limit(): void {
+  $this->freezeTime();$this->login($this->operator());$loan=$this->issue($this->member());
+  for($used=0;$used<2;$used++){
+   $this->travel(16)->days();
+   $expected=now()->addDays(15)->startOfSecond();
+   $this->action($loan,'renew',['expected_renewal_count'=>$used])->assertRedirect()->assertSessionHasNoErrors();
+   $this->assertTrue($loan->fresh()->due_at->equalTo($expected));
+  }
+  $this->travel(16)->days();
+  $this->get(route('issue-register.index'))->assertOk()->assertDontSee('data-circulation-confirm="renew"',false);
+  $this->action($loan,'renew',['expected_renewal_count'=>2])->assertSessionHasErrors('loan');
+  $this->assertSame(2,$loan->fresh()->renewal_count);
  }
  public function test_fine_flag_is_filterable_exportable_and_can_be_cleared_on_archived_history(): void {
   $this->login($this->operator());$loan=$this->issue($this->member());$loan->forceFill(['due_at'=>now()->subDay(),'returned_at'=>now()])->save();$loan->book->delete();
@@ -49,13 +65,98 @@ class IssueRegisterActionsTest extends TestCase {
   $csv=$this->get('/issue-register/export?fine=flagged')->assertOk()->streamedContent();$this->assertStringContainsString('Fine Flag',$csv);$this->assertStringContainsString($loan->accession_snapshot,$csv);
   $this->action($loan,'clear-fine')->assertRedirect();$this->assertFalse($loan->fresh()->is_fined);$this->assertDatabaseHas('audit_logs',['action'=>'book.fine_flagged']);$this->assertDatabaseHas('audit_logs',['action'=>'book.fine_cleared']);
  }
- public function test_actions_require_confirmation_valid_days_and_authorized_role(): void {
+ public function test_issue_date_range_and_other_filters_apply_to_the_register_and_downloads(): void
+ {
+  $this->login($this->operator());
+  $member = $this->member();
+  $loans = collect([
+   '2026-11-10 23:59:59',
+   '2026-11-11 23:59:59',
+   '2026-11-11 00:00:00',
+   '2026-11-12 00:00:00',
+   '2026-11-11 00:00:00',
+  ])->map(fn ($issuedAt) => BookLoan::create([
+   'book_id' => $this->book()->id,
+   'user_id' => $member->id,
+   'issued_at' => $issuedAt,
+   'returned_at' => '2026-11-13 08:00:00',
+  ]));
+
+  $filters = ['q' => 'REG-', 'status' => 'returned', 'from' => '2026-11-11', 'to' => '2026-11-11'];
+  $this->get(route('issue-register.index', $filters))->assertOk()
+   ->assertViewHas('loans', fn ($rows) => $rows->pluck('id')->all() === [$loans[4]->id, $loans[2]->id, $loans[1]->id]);
+  $this->get(route('issue-register.index', $filters + ['sort' => 'issued_desc']))->assertOk()
+   ->assertViewHas('loans', fn ($rows) => $rows->pluck('id')->all() === [$loans[1]->id, $loans[4]->id, $loans[2]->id]);
+
+  $filters['sort'] = 'issued_asc';
+  $this->get(route('issue-register.index', $filters))
+   ->assertOk()
+   ->assertSee(route('issue-register.export', ['format' => 'pdf'] + $filters))
+   ->assertSee(route('issue-register.export', ['format' => 'xlsx'] + $filters))
+   ->assertViewHas('loans', fn ($rows) => $rows->pluck('id')->all() === [$loans[2]->id, $loans[4]->id, $loans[1]->id]);
+  $this->get(route('issue-register.index', ['to' => '2026-11-11']))
+   ->assertOk()->assertViewHas('loans', fn ($rows) => $rows->total() === 4);
+  $this->get(route('issue-register.index', ['from' => '2026-11-11']))
+   ->assertOk()->assertViewHas('loans', fn ($rows) => $rows->total() === 4);
+  $this->get(route('issue-register.index', ['from' => '2026-11-12', 'to' => '2026-11-11']))
+   ->assertSessionHasErrors('to');
+  $this->getJson(route('issue-register.export', ['format' => 'zip']))->assertUnprocessable()->assertJsonValidationErrors('format');
+  $this->getJson(route('issue-register.export', ['sort' => 'invalid']))->assertUnprocessable()->assertJsonValidationErrors('sort');
+
+  $pdf = $this->get(route('issue-register.export', ['format' => 'pdf'] + $filters))
+   ->assertOk()->assertHeader('Content-Type', 'application/pdf');
+  $this->assertStringStartsWith('%PDF-', $pdf->getContent());
+
+  $xlsx = $this->get(route('issue-register.export', ['format' => 'xlsx', 'page' => 2] + $filters))
+   ->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  $path = tempnam(sys_get_temp_dir(), 'lms-register-');
+  try {
+   file_put_contents($path, $xlsx->streamedContent());
+   $workbook = IOFactory::createReader('Xlsx')->load($path);
+   $sheet = $workbook->getActiveSheet();
+   $this->assertSame(10, $sheet->getHighestDataRow());
+   $this->assertSame([$loans[2]->accession_snapshot, $loans[4]->accession_snapshot, $loans[1]->accession_snapshot], array_column($sheet->rangeToArray('B8:B10'), 0));
+   $this->assertSame(DataType::TYPE_STRING, $sheet->getCell('B8')->getDataType());
+   $this->assertStringContainsString('Through 2026-11-11', $sheet->getCell('A2')->getValue());
+   $workbook->disconnectWorksheets();
+  } finally {
+   unlink($path);
+  }
+
+  $csv = $this->get(route('issue-register.export', $filters))->assertOk()->streamedContent();
+  $rows = array_map(fn ($line) => str_getcsv($line, ',', '"', ''), explode("\n", trim($csv)));
+  $this->assertSame([$loans[2]->accession_snapshot, $loans[4]->accession_snapshot, $loans[1]->accession_snapshot], array_column(array_slice($rows, 1), 1));
+  $this->assertStringNotContainsString($loans[3]->accession_snapshot, $csv);
+  $this->assertDatabaseHas('audit_logs', ['action' => 'loan.register_exported']);
+ }
+
+ public function test_chronological_export_keeps_every_record_when_an_issue_time_spans_two_batches(): void
+ {
+  $this->login($this->operator());
+  $book = $this->book();
+  $row = ['book_id' => $book->id, 'issued_at' => '2026-11-11 08:00:00'];
+  DB::table('book_loans')->insert(array_fill(0, 251, $row));
+  DB::table('book_loans')->insert(array_replace($row, ['issued_at' => '2026-11-10 08:00:00']));
+  $query = ['sort' => 'issued_asc'];
+  $this->get(route('issue-register.index', $query))->assertOk()->assertSee('sort=issued_asc&amp;page=2', false);
+
+  $csv = $this->get(route('issue-register.export', $query))->assertOk()->streamedContent();
+  $rows = array_map(fn ($line) => str_getcsv($line, ',', '"', ''), explode("\n", trim($csv)));
+  $ids = array_map('intval', array_column(array_slice($rows, 1), 0));
+  $first = BookLoan::min('id');
+  $last = BookLoan::max('id');
+  $this->assertSame([$last, ...range($first, $last - 1)], $ids);
+ }
+
+ public function test_actions_require_confirmation_and_reject_client_selected_renewal_days(): void {
   $this->login($this->operator());$member=$this->member();$loan=$this->issue($member);
   $this->post(route('issue-register.action',['loan'=>$loan->id,'action'=>'fine']))->assertSessionHasErrors('confirmed');
   foreach([0,366,'bad'] as $days)$this->action($loan,'renew',['days'=>$days,'expected_renewal_count'=>0])->assertSessionHasErrors('days');
-  $this->login($member);foreach(['fine','reminder','renew'] as $action)$this->action($loan,$action,['days'=>15,'expected_renewal_count'=>0])->assertForbidden();$this->get('/issue-register')->assertForbidden();$this->get('/issue-register/export')->assertForbidden();
+  $this->login($member);foreach(['fine','reminder','renew'] as $action)$this->action($loan,$action,['expected_renewal_count'=>0])->assertForbidden();$this->get('/issue-register')->assertForbidden();$this->get('/issue-register/export')->assertForbidden();$this->get('/issue-register/export?format=pdf')->assertForbidden();
  }
  public function test_issue_management_menu_groups_the_operations_after_dashboard(): void {
-  $this->login($this->operator(UserRole::Staff));$this->get('/dashboard')->assertOk()->assertSeeInOrder(['Dashboard','Issue Management','Issue Book','Issue Requests','Issue Register','Fine Reports','Books']);
+  $this->login($this->operator());
+  $this->get('/reports')->assertOk()->assertSee(route('issue-register.index'))->assertSeeInOrder(['Annual Summary', 'Issue Register']);
+  $this->login($this->operator(UserRole::Staff));$this->get('/dashboard')->assertOk()->assertSeeInOrder(['Dashboard','Issue Management','Issue Book','Issue Requests','Issue Register','Flagged Issues','Books']);
  }
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Questions\AdminChoiceQuestion;
 use App\Enums\UserRole;
 use App\Models\Designation;
 use App\Models\User;
@@ -20,7 +21,7 @@ Artisan::command('library:create-admin', function () {
         $this->error('No active designations found. Run php artisan db:seed --class=DesignationSeeder first.');
         return 1;
     }
-    $selectedDesignation = $this->choice('Designation', array_values($designations), 0);
+    $selectedDesignation = $this->output->askQuestion(new AdminChoiceQuestion('Designation', array_values($designations), 0));
     $designationId = array_search($selectedDesignation, $designations, true);
     $name = $this->ask('Administrator name');
     $email = strtolower((string) $this->ask('Email address'));
@@ -32,7 +33,7 @@ Artisan::command('library:create-admin', function () {
 
         return 1;
     }
-    $selectedUnit = $this->choice('Department', array_values($unitLabels), $unitLabels['IT Section'] ?? reset($unitLabels));
+    $selectedUnit = $this->output->askQuestion(new AdminChoiceQuestion('Department', array_values($unitLabels), $unitLabels['IT Section'] ?? reset($unitLabels)));
     $unit = array_search($selectedUnit, $unitLabels, true);
     $validator = Validator::make(['name' => $name, 'email' => $email, 'password' => $password, 'password_confirmation' => $confirm], [
         'name' => 'required|string|max:255', 'email' => 'required|email|max:255|unique:users,email',
@@ -79,3 +80,8 @@ Artisan::command('library:benchmark-catalog {--query=} {--accession=} {--call=} 
     else {$this->table(['Driver','Books','Matches','Median ms','Max ms'],[[$result['driver'],$result['books'],$matches,$result['median_ms'],$result['max_ms']]]);$this->line($result['scope']);}
     return 0;
 })->purpose('Measure catalog queries against existing data without changing catalog records');
+
+Artisan::command('library:prune-import-drafts', function () {
+    $this->info(app(\App\Services\Library\ImportDraft::class)->prune().' expired import previews removed.');
+})->purpose('Remove private import preview files older than two hours');
+Schedule::command('library:prune-import-drafts')->daily()->withoutOverlapping();

@@ -197,7 +197,7 @@ class BookCatalogTest extends TestCase
 
     public function test_issued_book_cannot_be_deleted_or_reduced_below_issued_stock(): void
     {
-        Storage::fake('local');$this->loginRole();$book=$this->book(['cover'=>UploadedFile::fake()->image('cover.png')]);$cover=$book->cover_path;$this->loan($book,2);
+        Storage::fake('local');$this->loginRole();$book=$this->book(['cover'=>UploadedFile::fake()->image('cover.png')]);$cover=$book->cover_path;$this->loan($book);$this->loan($book);
         $this->delete('/books/'.$book->id,['confirmation'=>'DELETE'])->assertSessionHasErrors('book');
         $this->put('/books/'.$book->id,array_replace($this->data(),['number_of_copies'=>1,'cover'=>UploadedFile::fake()->image('rejected.png')]))->assertSessionHasErrors('number_of_copies');
         $this->assertNotSoftDeleted($book);$this->assertSame(3,$book->fresh()->number_of_copies);
@@ -216,11 +216,11 @@ class BookCatalogTest extends TestCase
         $this->get('/audit-logs?subject_type=Book&subject_id='.$book->id)->assertOk()->assertSee('book.issued')->assertSee('book.returned');
     }
 
-    public function test_total_times_issued_counts_events_not_copies_or_return_edits(): void
+    public function test_total_times_issued_counts_each_book_issue_without_counting_returns(): void
     {
-        $this->loginRole();$book=$this->book();$first=$this->loan($book,2);$second=$this->loan($book,1);
-        $this->assertSame(2,$book->fresh()->total_issue_count);$this->assertSame(3,$book->activeLoanQuantity());
-        $first->update(['returned_at'=>now()]);$second->update(['quantity'=>2]);
+        $this->loginRole();$book=$this->book();$first=$this->loan($book);$this->loan($book);
+        $this->assertSame(2,$book->fresh()->total_issue_count);$this->assertSame(2,$book->activeLoanQuantity());
+        $first->update(['returned_at'=>now()]);
         $this->assertSame(2,$book->fresh()->total_issue_count);$this->loan($book,1);$this->assertSame(3,$book->fresh()->total_issue_count);
         $this->assertDatabaseCount('book_loans',3);
     }

@@ -39,6 +39,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-users', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
         Gate::define('manage-library', fn (User $u) => $u->is_active && $u->role !== UserRole::Member);
         Gate::define('delete-library', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
+        Gate::define('view-reports', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
         Gate::define('view-logs', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
         Gate::define('manage-user', function (User $actor, User $target) {
             if (!$actor->can('manage-users')) return false;

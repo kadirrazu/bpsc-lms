@@ -18,7 +18,7 @@
             <div class="navbar-nav flex-row order-md-last align-items-center gap-2 library-account">
                 
                 <div class="nav-item dropdown">
-                    <button type="button" class="nav-link dropdown-toggle border-0 bg-transparent" data-bs-toggle="dropdown" aria-expanded="false" aria-label="{{ __('User menu') }}"><span class="avatar avatar-sm">{{ mb_substr(auth()->user()->name,0,1) }}</span><span class="d-none d-lg-block ps-2">{{ auth()->user()->name }}</span></button>
+                    <button type="button" class="nav-link dropdown-toggle border-0 bg-transparent" data-bs-toggle="dropdown" aria-expanded="false" aria-label="{{ __('User menu') }}"><span class="avatar avatar-sm">{{ mb_substr(auth()->user()->name,0,1) }}</span>@include('shared.account-name')</button>
                     <div class="dropdown-menu dropdown-menu-end">
                         <div class="px-3 py-2"><strong>{{ auth()->user()->name }}</strong><div class="small text-secondary">{{ auth()->user()->designation?->name ?? __('Not assigned') }}</div><div class="small text-secondary">{{ \App\Support\Ui::unit(auth()->user()->unit) }}</div></div><div class="dropdown-divider"></div>
                         <a class="dropdown-item" href="{{ route('staff-profile.edit') }}"><i class="bi bi-person-circle" aria-hidden="true"></i>{{ __('My Profile') }}</a>
@@ -30,10 +30,13 @@
             <div class="collapse navbar-collapse" id="navbar-menu"><ul class="navbar-nav gap-md-2">
 <li class="nav-item"><a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}"><i class="bi bi-grid-1x2"></i>Dashboard</a></li>
 @can('manage-library')
-<li class="nav-item dropdown"><button class="nav-link dropdown-toggle border-0 bg-transparent {{ request()->routeIs('loans.*','issue-requests.*','issue-register.*')?'active':'' }}" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-arrow-left-right"></i>Issue Management</button><div class="dropdown-menu"><a class="dropdown-item" href="{{ route('loans.create') }}"><i class="bi bi-box-arrow-up-right"></i>Issue Book</a><a class="dropdown-item" href="{{ route('issue-requests.index') }}"><i class="bi bi-bookmark-check"></i>Issue Requests</a><a class="dropdown-item" href="{{ route('issue-register.index') }}"><i class="bi bi-journal-text"></i>Issue Register</a><a class="dropdown-item" href="{{ route('issue-register.index',['fine'=>'flagged']) }}"><i class="bi bi-flag"></i>Fine Reports</a></div></li>
+<li class="nav-item dropdown"><button class="nav-link dropdown-toggle border-0 bg-transparent {{ request()->routeIs('loans.*','issue-requests.*','issue-register.*')?'active':'' }}" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-arrow-left-right"></i>Issue Management</button><div class="dropdown-menu"><a class="dropdown-item" href="{{ route('loans.create') }}"><i class="bi bi-box-arrow-up-right"></i>Issue Book</a><a class="dropdown-item" href="{{ route('issue-requests.index') }}"><i class="bi bi-bookmark-check"></i>Issue Requests</a><a class="dropdown-item" href="{{ route('issue-register.index') }}"><i class="bi bi-journal-text"></i>Issue Register</a><a class="dropdown-item" href="{{ route('issue-register.index',['fine'=>'flagged']) }}"><i class="bi bi-flag"></i>Flagged Issues</a></div></li>
 <li class="nav-item"><a class="nav-link {{ request()->routeIs('books.*') ? 'active':'' }}" href="{{ route('books.index') }}"><i class="bi bi-journals"></i>Books</a></li>
 
 <li class="nav-item dropdown"><button class="nav-link dropdown-toggle border-0 bg-transparent {{ request()->routeIs('authors.*','publishers.*','categories.*') ? 'active':'' }}" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-collection"></i>Catalog Setup</button><div class="dropdown-menu"><a class="dropdown-item" href="{{ route('authors.index') }}"><i class="bi bi-person"></i>Authors</a><a class="dropdown-item" href="{{ route('publishers.index') }}"><i class="bi bi-building"></i>Publishers</a><a class="dropdown-item" href="{{ route('categories.index') }}"><i class="bi bi-tags"></i>Categories</a></div></li>
+@can('view-reports')
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('reports.*') ? 'active' : '' }}" href="{{ route('reports.index') }}"><i class="bi bi-bar-chart" aria-hidden="true"></i>Reports</a></li>
+@endcan
 <li class="nav-item dropdown"><button class="nav-link dropdown-toggle border-0 bg-transparent {{ request()->routeIs('users.*','designations.*','units.*','roles.*','audit-logs.*','borrowing-settings.*') ? 'active' : '' }}" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-sliders2"></i>Administration</button>
 <div class="dropdown-menu administration-menu">
 <h6 class="dropdown-header">People & Organization</h6>
@@ -43,6 +46,7 @@
 @can('view-logs')<a class="dropdown-item" href="{{ route('audit-logs.index') }}"><i class="bi bi-clock-history"></i>Audit Logs</a>@endcan
 </div></li>
 @endcan
+
 </ul></div>
         </div>
     </nav>

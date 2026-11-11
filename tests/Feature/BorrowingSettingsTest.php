@@ -10,11 +10,11 @@ class BorrowingSettingsTest extends TestCase {
  use RefreshDatabase;
  private function login(UserRole $role): User {$u=User::factory()->create(['role'=>$role]);$this->actingAs($u)->withSession(['auth_version'=>$u->auth_version]);return $u;}
  private function book(): Book {$p=Publisher::firstOrCreate(['title_bn'=>'প্রকাশক']);return Book::create(['accession_number'=>'SET-'.(Book::withTrashed()->count()+1),'title_bn'=>'বই','publisher_id'=>$p->id,'call_number'=>'800','number_of_copies'=>5]);}
- private function settings(int $limit,int $days): void {$this->login(UserRole::Admin);$this->put(route('borrowing-settings.update'),['loan_limit'=>$limit,'loan_days'=>$days])->assertRedirect()->assertSessionHasNoErrors();}
+ private function settings(int $limit,int $days,array $renewal=[]): void {$this->login(UserRole::Admin);$this->put(route('borrowing-settings.update'),['loan_limit'=>$limit,'loan_days'=>$days]+$renewal)->assertRedirect()->assertSessionHasNoErrors();}
  private function loan(User $member): BookLoan {return BookLoan::create(['book_id'=>$this->book()->id,'user_id'=>$member->id,'quantity'=>1,'issued_at'=>now()]);}
  public function test_only_administrator_can_read_or_update_settings(): void {
   foreach([UserRole::Librarian,UserRole::Staff,UserRole::Member] as $role){$this->login($role);$this->get(route('borrowing-settings.edit'))->assertForbidden();$this->put(route('borrowing-settings.update'),['loan_limit'=>3,'loan_days'=>21])->assertForbidden();}
-  $this->login(UserRole::Admin);$this->get(route('borrowing-settings.edit'))->assertOk()->assertViewHas('settings',fn($s)=>$s['loan_limit']===2 && $s['loan_days']===15);
+  $this->login(UserRole::Admin);$this->get(route('borrowing-settings.edit'))->assertOk()->assertViewHas('settings',fn($s)=>$s['loan_limit']===2 && $s['loan_days']===15 && $s['renewal_limit']===2 && $s['renewal_days']===15);
  }
  public function test_settings_validate_persist_and_record_an_audit_event(): void {
   $this->login(UserRole::Admin);
@@ -32,19 +32,28 @@ class BorrowingSettingsTest extends TestCase {
   $this->settings(1,21);$this->login(UserRole::Member);$this->post(route('member.books.request',$this->book()))->assertRedirect()->assertSessionHasNoErrors();$this->post(route('member.books.request',$this->book()))->assertSessionHasErrors('request');$this->assertDatabaseCount('book_issue_requests',1);
  }
  public function test_policy_changes_preserve_existing_due_dates_and_change_renewal_default(): void {
-  $this->freezeTime();$member=User::factory()->create(['role'=>UserRole::Member]);$loan=$this->loan($member);$due=$loan->due_at->toDateTimeString();$this->settings(3,21);$this->assertSame($due,$loan->fresh()->due_at->toDateTimeString());$this->assertTrue($this->loan($member)->due_at->equalTo(now()->addDays(21)->startOfSecond()));
-  $this->travel(16)->days();$expected=now()->addDays(21)->startOfSecond();$this->login(UserRole::Librarian);$this->post(route('issue-register.action',['loan'=>$loan->id,'action'=>'renew']),['confirmed'=>true,'expected_renewal_count'=>0])->assertRedirect()->assertSessionHasNoErrors();$this->assertTrue($loan->fresh()->due_at->equalTo($expected));
+  $this->freezeTime();$member=User::factory()->create(['role'=>UserRole::Member]);$loan=$this->loan($member);$due=$loan->due_at->toDateTimeString();$this->settings(3,21,['renewal_limit'=>1,'renewal_days'=>7]);$this->assertSame($due,$loan->fresh()->due_at->toDateTimeString());$this->assertTrue($this->loan($member)->due_at->equalTo(now()->addDays(21)->startOfSecond()));
+  $this->travel(16)->days();$expected=now()->addDays(7)->startOfSecond();$this->login(UserRole::Librarian);$this->post(route('issue-register.action',['loan'=>$loan->id,'action'=>'renew']),['confirmed'=>true,'expected_renewal_count'=>0])->assertRedirect()->assertSessionHasNoErrors();$this->assertTrue($loan->fresh()->due_at->equalTo($expected));
+  $this->travel(8)->days();$this->post(route('issue-register.action',['loan'=>$loan->id,'action'=>'renew']),['confirmed'=>true,'expected_renewal_count'=>1])->assertSessionHasErrors('loan');
+  $this->assertSame(1,$loan->fresh()->renewal_count);
  }
  public function test_renew_and_fine_are_hidden_and_rejected_until_due_time_passes(): void {
   $this->freezeTime();$member=User::factory()->create(['role'=>UserRole::Member]);$loan=$this->loan($member);$this->login(UserRole::Librarian);
   $this->get(route('issue-register.index'))->assertOk()->assertDontSee('data-circulation-confirm="renew"',false)->assertDontSee('data-circulation-confirm="fine"',false);
-  foreach(['renew','fine'] as $action)$this->post(route('issue-register.action',['loan'=>$loan->id,'action'=>$action]),['confirmed'=>true,'days'=>15,'expected_renewal_count'=>0])->assertSessionHasErrors('loan');
+  foreach(['renew','fine'] as $action)$this->post(route('issue-register.action',['loan'=>$loan->id,'action'=>$action]),['confirmed'=>true,'expected_renewal_count'=>0])->assertSessionHasErrors('loan');
   $this->assertSame(0,$loan->fresh()->renewal_count);$this->assertFalse($loan->fresh()->is_fined);$this->travel(16)->days();
   $this->get(route('issue-register.index'))->assertOk()->assertSee('data-circulation-confirm="renew"',false)->assertSee('data-circulation-confirm="fine"',false);
   $this->post(route('issue-register.action',['loan'=>$loan->id,'action'=>'fine']),['confirmed'=>true])->assertRedirect()->assertSessionHasNoErrors();$this->assertTrue($loan->fresh()->is_fined);
  }
- public function test_configuration_change_invalidates_a_pending_librarian_override(): void {
-  $member=User::factory()->create(['role'=>UserRole::Member]);$this->loan($member);$this->loan($member);$operator=$this->login(UserRole::Librarian);$book=$this->book();$data=['confirmed'=>true,'member_id'=>$member->id,'book_id'=>$book->id];$response=$this->post(route('loans.store'),$data)->assertOk();$token=$response->viewData('token');
-  $this->settings(2,21);$this->actingAs($operator)->withSession(['auth_version'=>$operator->auth_version]);$this->post(route('loans.store'),$data+['confirmation_token'=>$token])->assertOk()->assertViewIs('loans.confirm-limit');$this->assertDatabaseCount('book_loans',2);
+ public function test_batch_uses_current_settings_and_counts_existing_different_books(): void {
+  $member=User::factory()->create(['role'=>UserRole::Member]);$this->loan($member);
+  $books=[$this->book()->id,$this->book()->id];$data=['confirmed'=>true,'member_id'=>$member->id,'book_ids'=>$books];
+  $this->login(UserRole::Librarian);$this->post(route('loans.store'),$data)->assertSessionHasErrors('loan');
+  $this->assertDatabaseCount('book_loans',1);
+  $this->settings(3,21);$this->login(UserRole::Librarian);
+  $this->post(route('loans.store'),$data)->assertRedirect(route('issue-requests.index'))->assertSessionHasNoErrors();
+  $this->assertDatabaseCount('book_loans',3);
+  $loan=BookLoan::latest('id')->firstOrFail();
+  $this->assertTrue($loan->due_at->equalTo($loan->issued_at->copy()->addDays(21)));
  }
 }

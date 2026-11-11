@@ -1,43 +1,81 @@
 <?php
+
 namespace App\Services\Library;
-use App\Models\{Book,BookLoan,BookIssueRequest,User};
+
 use App\Enums\UserRole;
-use Illuminate\Http\Request;
+use App\Models\Book;
+use App\Models\BookIssueRequest;
+use App\Models\BookLoan;
+use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-class LoanIssuance {
- public function issue(Request $r,int $bookId,int $memberId,?int $requestId=null): array {
-  return DB::transaction(function()use($r,$bookId,$memberId,$requestId){
-   $book=Book::whereKey($bookId)->lockForUpdate()->first();
-   $entry=$requestId?BookIssueRequest::whereKey($requestId)->lockForUpdate()->firstOrFail():null;
-   if($entry && ($entry->status!=='pending' || (int)$entry->book_id!==$bookId || (int)$entry->user_id!==$memberId))throw ValidationException::withMessages(['request'=>'This request has already been reviewed or changed.']);
-   $member=User::whereKey($memberId)->lockForUpdate()->first();
-   if(!$book || !$member || !$member->is_active || $member->role!==UserRole::Member)throw ValidationException::withMessages(['loan'=>'Select an available book and an active Library Member.']);
-   if(BookLoan::where('book_id',$bookId)->where('user_id',$memberId)->whereNull('returned_at')->exists())throw ValidationException::withMessages(['loan'=>'This book is already issued to this member.']);
-   if($book->activeLoanQuantity()>=$book->number_of_copies)throw ValidationException::withMessages(['quantity'=>'There are not enough available copies.']);
-   if(!$entry && BookIssueRequest::where('book_id',$bookId)->where('user_id',$memberId)->where('status','pending')->exists())throw ValidationException::withMessages(['loan'=>'A pending request already exists for this book and member. Approve that request instead.']);
-   $active=(int)BookLoan::where('user_id',$memberId)->whereNull('returned_at')->sum('quantity');
-   $context=['operator_id'=>$r->user()->id,'book_id'=>$bookId,'member_id'=>$memberId,'request_id'=>$requestId,'active'=>$active,'policy'=>app(BorrowingPolicy::class)->values()];
-   $over=$active+1>app(BorrowingPolicy::class)->limit();
-   if($over){
-    if($r->user()->role!==UserRole::Librarian)throw ValidationException::withMessages(['loan'=>'This member already has '.$active.' books on loan. Return a book first; only a Librarian can confirm an exception.']);
-    $saved=$r->session()->get('loan_limit_confirmation');$token=(string)$r->input('confirmation_token','');
-    $confirmed=is_array($saved) && ($saved['context']??null)===$context && ($saved['expires']??0)>=time() && $token!=='' && hash_equals((string)$saved['token'],$token);
-    if(!$confirmed){
-     $token=bin2hex(random_bytes(32));$r->session()->put('loan_limit_confirmation',['context'=>$context,'token'=>$token,'expires'=>time()+600]);
-     return ['confirmation'=>true,'book'=>$book,'member'=>$member,'active'=>$active,'token'=>$token,'requestId'=>$requestId];
+
+class LoanIssuance
+{
+    /** @param list<int> $bookIds */
+    public function issue(User $operator, array $bookIds, int $memberId, ?int $requestId = null): Collection
+    {
+        $limit = app(BorrowingPolicy::class)->limit();
+        if (count($bookIds) < 1 || count($bookIds) > $limit || count(array_unique($bookIds)) !== count($bookIds)) {
+            throw ValidationException::withMessages(['book_ids' => "Select between 1 and $limit different books."]);
+        }
+
+        return DB::transaction(function () use ($operator, $bookIds, $memberId, $requestId, $limit) {
+            // Lock books in a consistent order before locking requests and the member.
+            $books = Book::whereKey($bookIds)->orderBy('id')->lockForUpdate()->get();
+            if ($books->count() !== count($bookIds)) {
+                throw ValidationException::withMessages(['loan' => 'A selected book is no longer available.']);
+            }
+
+            $request = $requestId ? BookIssueRequest::lockForUpdate()->findOrFail($requestId) : null;
+            if ($request && (count($bookIds) !== 1 || $request->status !== 'pending' || $request->loan_id
+                || (int) $request->book_id !== $bookIds[0] || (int) $request->user_id !== $memberId)) {
+                throw ValidationException::withMessages(['request' => 'This request has already been reviewed or changed.']);
+            }
+
+            $member = User::lockForUpdate()->find($memberId);
+            if (! $member || ! $member->is_active || $member->role !== UserRole::Member) {
+                throw ValidationException::withMessages(['loan' => 'Select an active Library Member.']);
+            }
+
+            $activeTitles = BookLoan::where('user_id', $memberId)->whereNull('returned_at')
+                ->lockForUpdate()->pluck('book_id')->unique();
+            if ($activeTitles->intersect($bookIds)->isNotEmpty()) {
+                throw ValidationException::withMessages(['loan' => 'A selected book is already on loan to this member.']);
+            }
+            if ($activeTitles->count() + $books->count() > $limit) {
+                $remaining = max(0, $limit - $activeTitles->count());
+                throw ValidationException::withMessages(['loan' => "This member can borrow $remaining more book(s). The configured limit is $limit."]);
+            }
+
+            foreach ($books as $book) {
+                if ($book->activeLoanQuantity() >= $book->number_of_copies) {
+                    throw ValidationException::withMessages(['quantity' => "No copies are available for accession {$book->accession_number}."]);
+                }
+                if (! $request && BookIssueRequest::where('book_id', $book->id)->where('user_id', $memberId)->where('status', 'pending')->exists()) {
+                    throw ValidationException::withMessages(['loan' => "Accession {$book->accession_number} already has a pending request. Approve it from Issue Requests."]);
+                }
+            }
+
+            $issuedAt = now();
+            $loans = collect();
+            foreach ($books as $book) {
+                $loan = new BookLoan(['book_id' => $book->id, 'user_id' => $memberId, 'issued_at' => $issuedAt]);
+                $loan->issued_by = $operator->id;
+                $loan->save();
+                $loans->push($loan);
+
+                $entry = $request ?? new BookIssueRequest(['book_id' => $book->id, 'user_id' => $memberId, 'source' => 'staff_issue']);
+                $entry->fill(['status' => 'approved', 'loan_id' => $loan->id, 'reviewed_by' => $operator->id, 'reviewed_at' => $issuedAt])->save();
+                app(Audit::class)->record('book.issue_request_approved', ['loan_id' => $loan->id, 'source' => $entry->source], $entry);
+            }
+
+            if ($loans->count() > 1) {
+                app(Audit::class)->record('book.batch_issued', ['member_id' => $memberId, 'loan_ids' => $loans->pluck('id')->all()], $member);
+            }
+
+            return $loans;
+        }, 3);
     }
-   }
-   $loan=new BookLoan(['book_id'=>$bookId,'user_id'=>$memberId,'quantity'=>1,'issued_at'=>now()]);
-   $loan->issued_by=$r->user()->id;
-   if($over)$loan->authorizeLimitOverride($r->user(),$active);
-   $loan->save();
-   if(!$entry)$entry=new BookIssueRequest(['book_id'=>$bookId,'user_id'=>$memberId,'source'=>'staff_issue']);
-   $entry->fill(['status'=>'approved','loan_id'=>$loan->id,'reviewed_by'=>$r->user()->id,'reviewed_at'=>now()])->save();
-   app(Audit::class)->record('book.issue_request_approved',['loan_id'=>$loan->id,'source'=>$entry->source],$entry);
-   if($over)app(Audit::class)->record('book.loan_limit_overridden',['loan_id'=>$loan->id,'member_id'=>$memberId,'previous_active_copies'=>$active,'new_active_copies'=>$active+1,'due_at'=>$loan->due_at->toIso8601String()],$book);
-   $r->session()->forget('loan_limit_confirmation');
-   return ['confirmation'=>false,'loan'=>$loan];
-  });
- }
 }

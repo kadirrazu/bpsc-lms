@@ -31,7 +31,7 @@ class BookIssueRequestController extends Controller {
   DB::transaction(function()use($r,$book){
    $current=Book::whereKey($book->id)->lockForUpdate()->firstOrFail();
    $borrower=User::whereKey($r->user()->id)->lockForUpdate()->firstOrFail();
-   $active=(int)BookLoan::where('user_id',$borrower->id)->whereNull('returned_at')->sum('quantity');
+   $active=(int)BookLoan::where('user_id',$borrower->id)->whereNull('returned_at')->distinct()->count('book_id');
    $pending=BookIssueRequest::where('user_id',$borrower->id)->where('status','pending')->count();
    if($active+$pending>=app(\App\Services\Library\BorrowingPolicy::class)->limit())throw ValidationException::withMessages(['request'=>'You may borrow at most '.app(\App\Services\Library\BorrowingPolicy::class)->limit().' books at a time for '.app(\App\Services\Library\BorrowingPolicy::class)->days().' days. You currently have '.$active.' on loan and '.$pending.' pending requests. Return a book or withdraw a pending request before requesting another.']);
    if(BookIssueRequest::where('book_id',$current->id)->where('user_id',$r->user()->id)->where('status','pending')->exists())throw ValidationException::withMessages(['request'=>'You already have a pending request for this book.']);
@@ -80,11 +80,10 @@ class BookIssueRequestController extends Controller {
   return view('library.issue-requests',compact('requests','search','status'));
  }
  public function review(Request $r,BookIssueRequest $issueRequest){
-  Gate::authorize('manage-library');$data=$r->validate(['decision'=>'required|in:approve,reject','confirmation_token'=>'nullable|string|max:64']);
+  Gate::authorize('manage-library');$data=$r->validate(['decision'=>'required|in:approve,reject']);
   if($data['decision']==='approve'){
-   $result=app(\App\Services\Library\LoanIssuance::class)->issue($r,(int)$issueRequest->book_id,(int)$issueRequest->user_id,$issueRequest->id);
-   if($result['confirmation'])return view('loans.confirm-limit',$result);
-   return redirect()->route('issue-requests.index')->with('success','Book issued. Due: '.\App\Support\Ui::date($result['loan']->due_at));
+   $loan=app(\App\Services\Library\LoanIssuance::class)->issue($r->user(),[(int)$issueRequest->book_id],(int)$issueRequest->user_id,$issueRequest->id)->first();
+   return redirect()->route('issue-requests.index')->with('success','Book issued. Due: '.\App\Support\Ui::date($loan->due_at));
   }
   DB::transaction(function()use($r,$issueRequest){
    Book::whereKey($issueRequest->book_id)->lockForUpdate()->first();

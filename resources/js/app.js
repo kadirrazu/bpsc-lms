@@ -44,7 +44,17 @@ document.querySelectorAll('[data-catalog-picker]').forEach((picker, index) => {
         [...list.children].forEach((option, n) => {option.classList.toggle('active', n === active); option.setAttribute('aria-selected', String(n === active));});
         if (active >= 0) {input.setAttribute('aria-activedescendant', list.children[active].id); list.children[active].scrollIntoView({block: 'nearest'});}
     };
-    const select = item => {generation++; controller?.abort(); clearTimeout(timer); input.value = item.label; value.value = String(item.id); status.textContent = ''; input.setCustomValidity(''); close(); value.dispatchEvent(new Event('change', {bubbles: true}));};
+    const select = item => {
+        generation++;
+        controller?.abort();
+        clearTimeout(timer);
+        input.value = item.label;
+        value.value = String(item.id);
+        status.textContent = '';
+        input.setCustomValidity('');
+        close();
+        value.dispatchEvent(new CustomEvent('change', {bubbles: true, detail: item}));
+    };
     const search = async () => {
         const current = ++generation;
         controller?.abort(); controller = new AbortController(); status.textContent = 'Searching…';

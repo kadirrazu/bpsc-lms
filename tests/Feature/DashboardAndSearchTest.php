@@ -101,8 +101,8 @@ class DashboardAndSearchTest extends TestCase
     public function test_dashboard_cache_tracks_issue_return_user_creation_and_book_deletion(): void
     {
         $this->login();$book=$this->book(1);$before=app(DashboardOverview::class)->snapshot();$member=User::factory()->create();
-        $loan=BookLoan::create(['book_id'=>$book->id,'user_id'=>$member->id,'quantity'=>2,'issued_at'=>now()]);
-        $during=app(DashboardOverview::class)->snapshot();$this->assertSame(2,$during['stats']['issued']);$this->assertSame($before['stats']['users']+1,$during['stats']['users']);
+        $loan=BookLoan::create(['book_id'=>$book->id,'user_id'=>$member->id,'quantity'=>1,'issued_at'=>now()]);
+        $during=app(DashboardOverview::class)->snapshot();$this->assertSame(1,$during['stats']['issued']);$this->assertSame($before['stats']['users']+1,$during['stats']['users']);
         $loan->update(['returned_at'=>now()]);$this->delete('/books/'.$book->id,['confirmation'=>'DELETE'])->assertRedirect();
         $after=app(DashboardOverview::class)->snapshot();$this->assertSame(0,$after['stats']['issued']);$this->assertSame(0,$after['stats']['books']);
     }
@@ -122,8 +122,8 @@ class DashboardAndSearchTest extends TestCase
     {
         $this->login();$book=$this->book(1);$search=app(BookSearch::class);$request=Request::create('/books','GET');
         $first=$search->paginate($request,[]);$this->assertSame(0,$first->first()->total_issue_count);
-        $loan=BookLoan::create(['book_id'=>$book->id,'user_id'=>User::factory()->create()->id,'quantity'=>2,'issued_at'=>now()]);
-        $during=$search->paginate($request,[]);$this->assertSame(1,$during->first()->total_issue_count);$this->assertSame(2,(int)$during->first()->issued_copies);
+        $loan=BookLoan::create(['book_id'=>$book->id,'user_id'=>User::factory()->create()->id,'quantity'=>1,'issued_at'=>now()]);
+        $during=$search->paginate($request,[]);$this->assertSame(1,$during->first()->total_issue_count);$this->assertSame(1,(int)$during->first()->issued_copies);
         $loan->update(['returned_at'=>now()]);$after=$search->paginate($request,[]);$this->assertSame(0,(int)$after->first()->issued_copies);
     }
     public function test_local_benchmark_command_does_not_create_or_modify_catalog_records(): void

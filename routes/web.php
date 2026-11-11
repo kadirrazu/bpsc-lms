@@ -7,6 +7,11 @@ Route::middleware('guest')->group(function(){
  Route::post('/register',[\App\Http\Controllers\MemberRegistrationController::class,'store'])->middleware('throttle:5,1')->name('register.store');
 });
 Route::middleware('auth')->group(function () {
+ Route::prefix('reports')->name('reports.')->middleware('can:view-reports')->group(function () {
+  Route::get('/{report}/export/{format}', [\App\Http\Controllers\LibraryReportController::class, 'export'])
+   ->whereIn('format', ['pdf', 'xlsx'])->name('export');
+  Route::get('/{report?}', [\App\Http\Controllers\LibraryReportController::class, 'index'])->name('index');
+ });
  Route::get('/dashboard',[\App\Http\Controllers\DashboardController::class,'index'])->name('dashboard');
  Route::middleware('can:member-portal')->group(function () {
   Route::get('/member',[\App\Http\Controllers\MemberHomeController::class,'index'])->name('member.home');
@@ -34,6 +39,11 @@ Route::middleware('auth')->group(function () {
  Route::post('/loans/{loan}/return',[\App\Http\Controllers\BookIssueRequestController::class,'returned'])->middleware('can:manage-library')->name('loans.return');
  Route::prefix('catalog-import/{kind}')->where(['kind'=>'books|authors|publishers|categories'])->middleware('can:manage-library')->group(function(){
   Route::get('/',[\App\Http\Controllers\CatalogImportController::class,'index'])->name('catalog-import.index');
+  Route::get('/preview/{token}',[\App\Http\Controllers\CatalogImportController::class,'preview'])->name('catalog-import.preview');
+  Route::get('/preview/{token}/rows/{row}',[\App\Http\Controllers\CatalogImportController::class,'edit'])->whereNumber('row')->name('catalog-import.edit');
+  Route::put('/preview/{token}/rows/{row}',[\App\Http\Controllers\CatalogImportController::class,'update'])->whereNumber('row')->name('catalog-import.update');
+  Route::post('/preview/{token}/confirm',[\App\Http\Controllers\CatalogImportController::class,'confirm'])->middleware('throttle:10,1')->name('catalog-import.confirm');
+  Route::delete('/preview/{token}',[\App\Http\Controllers\CatalogImportController::class,'cancel'])->name('catalog-import.cancel');
   Route::get('/sample',[\App\Http\Controllers\CatalogImportController::class,'sample'])->name('catalog-import.sample');
   Route::post('/',[\App\Http\Controllers\CatalogImportController::class,'store'])->middleware('throttle:10,1')->name('catalog-import.store');
  });
