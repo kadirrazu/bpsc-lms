@@ -12,14 +12,14 @@ class BorrowingSettingsController extends Controller
 {
     public function edit(BorrowingPolicy $policy)
     {
-        Gate::authorize('manage-system');
+        Gate::authorize('manage-administration');
 
         return view('library.borrowing-settings', ['settings' => $policy->values()]);
     }
 
     public function update(Request $request, BorrowingPolicy $policy)
     {
-        Gate::authorize('manage-system');
+        Gate::authorize('manage-administration');
         $data = $request->validate([
             'loan_limit' => 'required|integer|min:1|max:100',
             'loan_days' => 'required|integer|min:1|max:365',

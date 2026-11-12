@@ -10,9 +10,28 @@
 <div><dt>Publisher</dt><dd><a class="bn-text" href="{{ route('catalog.entity',['kind'=>'publishers','entry'=>$book->publisher_id]) }}">{{ $book->publisher->title_bn }}</a></dd></div>
 <div><dt>Categories</dt><dd class="d-flex flex-wrap gap-2">@foreach($book->categories as $entry)<a class="bn-text" href="{{ route('catalog.entity',['kind'=>'categories','entry'=>$entry->id]) }}">{{ $entry->title_bn }}</a>@endforeach</dd></div>
 <div><dt>Accession Number</dt><dd>{{ $book->accession_number }}</dd></div><div><dt>Call Number</dt><dd>{{ $book->call_number }}</dd></div><div><dt>Shelf Number</dt><dd>{{ $book->shelf_number ?? '—' }}</dd></div><div><dt>Publication Year</dt><dd>{{ $book->publication_year ?? '—' }}</dd></div>
-</dl></div>@unless($member)@can('delete-library')<div class="card card-body mt-4 delete-panel"><div><h2>Delete Book</h2><p class="text-secondary mb-0">Issued books cannot be deleted. The cover file is removed when a book is deleted.</p></div>@if($issued>0)<span class="badge bg-orange-lt">Return all issued copies first</span>@else<form method="post" action="{{ route('books.destroy',$book) }}" data-confirm-delete data-confirm-message="Delete this book and remove its cover image? This action will be audited.">@csrf @method('DELETE')<input type="hidden" name="confirmation" value="DELETE"><button class="btn btn-outline-danger"><i class="bi bi-trash"></i>Delete Book</button></form>@endif</div>@endcan @endunless</div></div>
-@can('view-logs')
-<section class="card mt-4"><div class="card-body"><div class="d-flex justify-content-between align-items-center gap-3 mb-4"><div><h2 class="mb-1">Book Activity</h2><span class="text-secondary small">Latest 20 recorded events. Times use Bangladesh time.</span></div><a class="btn btn-sm btn-outline-secondary" href="{{ route('audit-logs.index',['subject_type'=>'Book','subject_id'=>$book->id]) }}">All Book Logs</a></div>
+</dl>
+@if ($borrowers?->isNotEmpty())
+<section class="mt-4 pt-3 border-top" aria-labelledby="on-loan-title">
+    <h2 class="h3 mb-2" id="on-loan-title">Copies on Loan</h2>
+    <div class="table-responsive">
+        <table class="table table-vcenter mb-0" aria-labelledby="on-loan-title">
+            <thead><tr><th scope="col">Member</th><th scope="col" class="text-center">Copies on Loan</th></tr></thead>
+            <tbody>
+            @foreach ($borrowers as $borrower)
+                <tr>
+                    <td>{{ $borrower->user?->name ?? 'Unavailable member' }}</td>
+                    <td class="text-center">{{ number_format((int) $borrower->copies) }}</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table>
+    </div>
+</section>
+@endif
+</div>@unless($member)@can('delete-library')<div class="card card-body mt-4 delete-panel"><div><h2>Delete Book</h2><p class="text-secondary mb-0">Issued books cannot be deleted. The cover file is removed when a book is deleted.</p></div>@if($issued>0)<span class="badge bg-orange-lt">Return all issued copies first</span>@else<form method="post" action="{{ route('books.destroy',$book) }}" data-confirm-delete data-confirm-message="Delete this book and remove its cover image? This action will be audited.">@csrf @method('DELETE')<input type="hidden" name="confirmation" value="DELETE"><button class="btn btn-outline-danger"><i class="bi bi-trash"></i>Delete Book</button></form>@endif</div>@endcan @endunless</div></div>
+@can('view-book-activity')
+<section class="card mt-4"><div class="card-body"><div class="d-flex justify-content-between align-items-center gap-3 mb-4"><div><h2 class="mb-1">Book Activity</h2><span class="text-secondary small">Latest 20 recorded events. Times use Bangladesh time.</span></div>@can('view-logs')<a class="btn btn-sm btn-outline-secondary" href="{{ route('audit-logs.index',['subject_type'=>'Book','subject_id'=>$book->id]) }}">All Book Logs</a>@endcan</div>
 <div class="book-activity">@forelse($activity as $event)<div class="activity-item"><span class="activity-dot"></span><div><strong>{{ ['book.created'=>'Book added','book.updated'=>'Book edited','book.relationships_changed'=>'Authors or categories updated','book.issued'=>'Book issued','book.returned'=>'Book returned','book.issue_updated'=>'Issue record updated','book.issue_deleted'=>'Issue record removed'][$event->action] ?? $event->action }}</strong><p class="text-secondary small mb-1">{{ $event->actor_name ?? 'System' }} · {{ \App\Support\Ui::date($event->created_at,'d M Y, h:i A') }}</p><p class="small mb-1">@if($event->details['member_name'] ?? null)Member: {{ $event->details['member_name'] }} · @endif @if(isset($event->details['after']['quantity']))Copies: {{ $event->details['after']['quantity'] }}@endif</p><details><summary class="small">View changes</summary><pre class="audit-details mt-2">{{ json_encode($event->details,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) }}</pre></details></div></div>@empty<p class="text-secondary mb-0">No recorded activity.</p>@endforelse</div>
 </div></section>
 @endcan

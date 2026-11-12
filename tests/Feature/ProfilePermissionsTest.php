@@ -101,10 +101,27 @@ class ProfilePermissionsTest extends TestCase
         $this->assertSame($user->name, $user->fresh()->name);
     }
 
-    public function test_staff_cannot_see_user_management_links_but_can_manage_designations(): void
+    public function test_administration_and_reports_menu_links_match_route_permissions(): void
     {
-        $this->signIn(UserRole::Staff);
-        $this->get('/dashboard')->assertOk()->assertDontSee('href="'.route('users.index').'"', false)->assertDontSee('User Management');
-        $this->get('/designations')->assertOk();
+        $administration = ['users.index', 'designations.index', 'units.index', 'borrowing-settings.edit', 'users.registrations'];
+        $administratorOnly = ['audit-logs.index', 'roles.index'];
+        foreach ([UserRole::Admin, UserRole::Librarian, UserRole::Staff] as $role) {
+            $this->signIn($role);
+            $dashboard = $this->get('/dashboard')->assertOk();
+            foreach ([...$administration, 'reports.index', ...$administratorOnly] as $name) {
+                $url = route($name);
+                $allowed = $role === UserRole::Admin || ($role === UserRole::Librarian && ! in_array($name, $administratorOnly, true));
+                if ($allowed) {
+                    $dashboard->assertSee('href="'.$url.'"', false);
+                } else {
+                    $dashboard->assertDontSee('href="'.$url.'"', false);
+                }
+                $this->get($url)->assertStatus($allowed ? 200 : 403);
+            }
+            if ($role === UserRole::Staff) {
+                $dashboard->assertDontSee('Administration</button>', false);
+                $this->post('/designations', ['name' => 'Restricted'])->assertForbidden();
+            }
+        }
     }
 }

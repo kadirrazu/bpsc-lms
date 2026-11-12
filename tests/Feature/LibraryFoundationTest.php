@@ -12,7 +12,7 @@ class LibraryFoundationTest extends TestCase {
   foreach(UserRole::cases() as $role) { $u=$this->actor($role); $this->loginAs($u); if($role===UserRole::Member) $this->get('/dashboard')->assertRedirect('/member'); else $this->get('/dashboard')->assertOk()->assertSee('lang="en"',false); $this->get('/profile')->assertOk(); }
  }
  public function test_only_managers_can_view_audit_logs(): void {
-  foreach(UserRole::cases() as $role) { $u=$this->actor($role); $this->loginAs($u)->get('/audit-logs')->assertStatus(in_array($role,[UserRole::Admin,UserRole::Librarian],true)?200:403); }
+  foreach(UserRole::cases() as $role) { $u=$this->actor($role); $this->loginAs($u)->get('/audit-logs')->assertStatus($role===UserRole::Admin?200:403); }
  }
  public function test_staff_cannot_delete_users_or_designations_or_view_roles(): void {
   $u=$this->actor(UserRole::Staff);$target=$this->actor(UserRole::Member);$d=Designation::create(['name'=>'পাঠক','slug'=>'reader','sort_order'=>1,'is_active'=>true]);

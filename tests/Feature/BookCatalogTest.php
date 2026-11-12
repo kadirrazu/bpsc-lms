@@ -163,6 +163,74 @@ class BookCatalogTest extends TestCase
         $this->get('/books/'.$book->id)->assertDontSee('Book Activity');
     }
 
+    public function test_book_activity_and_current_borrower_counts_follow_role_permissions(): void
+    {
+        $this->loginRole();
+        $book = $this->book(['number_of_copies' => 5]);
+        $this->get(route('books.show', $book))->assertOk()->assertDontSee('Copies on Loan');
+        $first = User::factory()->create(['name' => 'Active Borrower A']);
+        $second = User::factory()->create(['name' => 'Active Borrower B']);
+        $returned = User::factory()->create(['name' => 'Returned Borrower']);
+        foreach ([[$first, 2, null], [$first, 1, null], [$second, 1, null], [$returned, 1, now()]] as [$user, $quantity, $returnedAt]) {
+            DB::table('book_loans')->insert([
+                'book_id' => $book->id, 'user_id' => $user->id, 'quantity' => $quantity,
+                'issued_at' => now(), 'returned_at' => $returnedAt,
+            ]);
+        }
+
+        foreach ([UserRole::Admin, UserRole::Librarian, UserRole::Staff] as $role) {
+            $this->loginRole($role);
+            $detail = $this->get(route('books.show', $book))->assertOk()
+                ->assertSee('Copies on Loan')->assertSee($first->name)->assertSee($second->name)
+                ->assertDontSee($returned->name)->assertViewHas('issued', 4)
+                ->assertViewHas('borrowers', fn ($rows) => $rows->mapWithKeys(fn ($row) => [$row->user_id => (int) $row->copies])->all() === [
+                    $first->id => 3, $second->id => 1,
+                ]);
+            if ($role === UserRole::Staff) {
+                $detail->assertDontSee('Book Activity')->assertViewHas('activity', null);
+            } else {
+                $detail->assertSee('Book Activity')->assertSee('Book added');
+            }
+            if ($role === UserRole::Admin) {
+                $detail->assertSee('All Book Logs');
+            } else {
+                $detail->assertDontSee('All Book Logs');
+            }
+        }
+
+        $this->loginRole(UserRole::Member);
+        $this->get(route('member.books.show', $book))->assertOk()
+            ->assertViewHas('borrowers', fn ($borrowers) => $borrowers === null)
+            ->assertDontSee('Copies on Loan')->assertDontSee('Book Activity')
+            ->assertDontSee($first->name)->assertDontSee($second->name);
+    }
+
+    public function test_member_home_lists_only_the_signed_in_members_current_loans(): void
+    {
+        $this->loginRole();
+        $current = $this->book(['accession_number' => 'HOME-101', 'title_bn' => 'চলতি ধার']);
+        $returned = $this->book(['accession_number' => 'HOME-102', 'title_bn' => 'ফেরত বই']);
+        $other = $this->book(['accession_number' => 'HOME-103', 'title_bn' => 'অন্য সদস্যের বই']);
+        $member = $this->loginRole(UserRole::Member);
+        $loan = BookLoan::create(['book_id' => $current->id, 'user_id' => $member->id, 'issued_at' => now()]);
+        BookLoan::create(['book_id' => $returned->id, 'user_id' => $member->id, 'issued_at' => now()->subDays(2), 'returned_at' => now()]);
+        $this->loan($other);
+
+        $this->get('/dashboard')->assertRedirect(route('member.home'));
+        $this->get(route('member.home'))->assertOk()
+            ->assertSee('My Books on Loan')
+            ->assertSee($current->title_bn)->assertSee($current->accession_number)
+            ->assertSee(route('member.books.show', $current))
+            ->assertSee(\App\Support\Ui::date($loan->due_at))
+            ->assertDontSee($returned->title_bn)->assertDontSee($other->title_bn)
+            ->assertViewHas('loans', fn ($loans) => $loans->modelKeys() === [$loan->id]);
+
+        $loan->update(['returned_at' => now()]);
+        $this->get(route('member.home'))->assertOk()
+            ->assertSee('You have no books on loan.')
+            ->assertDontSee($current->title_bn);
+    }
+
     public function test_linked_masters_cannot_be_deleted_even_after_book_is_archived(): void
     {
         $this->loginRole();$book=$this->book();$author=$book->authors->first();$category=$book->categories->first();

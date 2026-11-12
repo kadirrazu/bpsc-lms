@@ -12,9 +12,13 @@ class BorrowingSettingsTest extends TestCase {
  private function book(): Book {$p=Publisher::firstOrCreate(['title_bn'=>'প্রকাশক']);return Book::create(['accession_number'=>'SET-'.(Book::withTrashed()->count()+1),'title_bn'=>'বই','publisher_id'=>$p->id,'call_number'=>'800','number_of_copies'=>5]);}
  private function settings(int $limit,int $days,array $renewal=[]): void {$this->login(UserRole::Admin);$this->put(route('borrowing-settings.update'),['loan_limit'=>$limit,'loan_days'=>$days]+$renewal)->assertRedirect()->assertSessionHasNoErrors();}
  private function loan(User $member): BookLoan {return BookLoan::create(['book_id'=>$this->book()->id,'user_id'=>$member->id,'quantity'=>1,'issued_at'=>now()]);}
- public function test_only_administrator_can_read_or_update_settings(): void {
-  foreach([UserRole::Librarian,UserRole::Staff,UserRole::Member] as $role){$this->login($role);$this->get(route('borrowing-settings.edit'))->assertForbidden();$this->put(route('borrowing-settings.update'),['loan_limit'=>3,'loan_days'=>21])->assertForbidden();}
+ public function test_administrator_and_librarian_can_read_and_update_settings(): void {
+  foreach([UserRole::Staff,UserRole::Member] as $role){$this->login($role);$this->get(route('borrowing-settings.edit'))->assertForbidden();$this->put(route('borrowing-settings.update'),['loan_limit'=>3,'loan_days'=>21])->assertForbidden();}
   $this->login(UserRole::Admin);$this->get(route('borrowing-settings.edit'))->assertOk()->assertViewHas('settings',fn($s)=>$s['loan_limit']===2 && $s['loan_days']===15 && $s['renewal_limit']===2 && $s['renewal_days']===15);
+  $this->login(UserRole::Librarian);
+  $this->get(route('borrowing-settings.edit'))->assertOk();
+  $this->put(route('borrowing-settings.update'), ['loan_limit'=>3,'loan_days'=>21])->assertRedirect()->assertSessionHasNoErrors();
+  $this->assertDatabaseHas('borrowing_settings', ['id'=>1,'loan_limit'=>3,'loan_days'=>21]);
  }
  public function test_settings_validate_persist_and_record_an_audit_event(): void {
   $this->login(UserRole::Admin);

@@ -11,12 +11,13 @@ class LibraryUnitsAndMemberTest extends TestCase {
   $user=User::factory()->create(['role'=>$role]);
   $this->actingAs($user)->withSession(['auth_version'=>$user->auth_version]);return $user;
  }
- public function test_only_administrator_can_manage_units(): void {
+ public function test_administrator_and_librarian_can_manage_units(): void {
   foreach(UserRole::cases() as $role) {
    $this->loginRole($role);
-   $this->get('/units')->assertStatus($role===UserRole::Admin?200:403);
+   $allowed = in_array($role, [UserRole::Admin, UserRole::Librarian], true);
+   $this->get('/units')->assertStatus($allowed ? 200 : 403);
    $response=$this->post('/units',['name'=>'Restricted '.$role->value,'sort_order'=>1,'is_active'=>1]);
-   if($role===UserRole::Admin)$response->assertRedirect('/units');else $response->assertForbidden();
+   if($allowed)$response->assertRedirect('/units');else $response->assertForbidden();
   }
  }
  public function test_renaming_keeps_user_assignment_and_unit_changes_are_audited(): void {
@@ -29,8 +30,8 @@ class LibraryUnitsAndMemberTest extends TestCase {
   $this->delete('/units/'.$unit->id,['confirmation'=>'DELETE'])->assertSessionHasErrors('unit');
   $this->put('/units/'.$unit->id,['name'=>'Renamed Unit','sort_order'=>5,'is_active'=>0])->assertSessionHasErrors('is_active');
  }
- public function test_administrator_can_create_and_delete_unassigned_unit(): void {
-  $this->loginRole(UserRole::Admin);$this->post('/units',['name'=>'Research','sort_order'=>3,'is_active'=>1])->assertRedirect('/units');
+ public function test_librarian_can_create_and_delete_unassigned_unit(): void {
+  $this->loginRole(UserRole::Librarian);$this->post('/units',['name'=>'Research','sort_order'=>3,'is_active'=>1])->assertRedirect('/units');
   $unit=Unit::where('name','Research')->firstOrFail();
   $this->assertDatabaseHas('audit_logs',['action'=>'unit.created','subject_id'=>$unit->id]);
   $this->delete('/units/'.$unit->id,['confirmation'=>'DELETE'])->assertRedirect('/units');

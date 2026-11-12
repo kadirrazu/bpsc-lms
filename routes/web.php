@@ -59,7 +59,7 @@ Route::middleware('auth')->group(function () {
    Route::delete('/{entry}',[$controller,'destroy'])->whereNumber('entry')->defaults('kind',$kind)->middleware('can:delete-library')->name('destroy');
   });
  }
- Route::resource('units', \App\Http\Controllers\UnitController::class)->except('show')->middleware('can:manage-system');
+ Route::resource('units', \App\Http\Controllers\UnitController::class)->except('show')->middleware('can:manage-administration');
  Route::get('/profile', [StaffProfileController::class,'edit'])->name('staff-profile.edit');
  Route::put('/profile', [StaffProfileController::class,'update'])->name('staff-profile.update');
  Route::get('/profile/password', [StaffProfileController::class,'password'])->name('staff-profile.password');
@@ -71,12 +71,12 @@ Route::middleware('auth')->group(function () {
   Route::resource('users',UserController::class)->except('destroy');
   Route::delete('/users/{user}',[UserController::class,'destroy'])->middleware('can:delete-library')->name('users.destroy');
  });
- Route::middleware('can:manage-library')->group(function () {
+ Route::middleware('can:manage-administration')->group(function () {
   Route::resource('designations',DesignationController::class)->except(['show','destroy']);
   Route::delete('/designations/{designation}',[DesignationController::class,'destroy'])->middleware('can:delete-library')->name('designations.destroy');
  });
  Route::get('/audit-logs',[AuditLogController::class,'index'])->middleware('can:view-logs')->name('audit-logs.index');
- Route::get('/borrowing-settings',[\App\Http\Controllers\BorrowingSettingsController::class,'edit'])->middleware('can:manage-system')->name('borrowing-settings.edit');
- Route::put('/borrowing-settings',[\App\Http\Controllers\BorrowingSettingsController::class,'update'])->middleware('can:manage-system')->name('borrowing-settings.update');
+ Route::get('/borrowing-settings',[\App\Http\Controllers\BorrowingSettingsController::class,'edit'])->middleware('can:manage-administration')->name('borrowing-settings.edit');
+ Route::put('/borrowing-settings',[\App\Http\Controllers\BorrowingSettingsController::class,'update'])->middleware('can:manage-administration')->name('borrowing-settings.update');
  Route::get('/roles',fn()=>view('library.roles'))->middleware('can:manage-system')->name('roles.index');
 });

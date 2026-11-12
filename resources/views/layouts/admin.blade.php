@@ -37,14 +37,21 @@
 @can('view-reports')
 <li class="nav-item"><a class="nav-link {{ request()->routeIs('reports.*') ? 'active' : '' }}" href="{{ route('reports.index') }}"><i class="bi bi-bar-chart" aria-hidden="true"></i>Reports</a></li>
 @endcan
+@can('manage-administration')
 <li class="nav-item dropdown"><button class="nav-link dropdown-toggle border-0 bg-transparent {{ request()->routeIs('users.*','designations.*','units.*','roles.*','audit-logs.*','borrowing-settings.*') ? 'active' : '' }}" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-sliders2"></i>Administration</button>
 <div class="dropdown-menu administration-menu">
 <h6 class="dropdown-header">People & Organization</h6>
 @can('manage-users')<a class="dropdown-item" href="{{ route('users.index') }}"><i class="bi bi-people"></i>Users</a><a class="dropdown-item" href="{{ route('users.registrations') }}"><i class="bi bi-person-plus" aria-hidden="true"></i>Member Registration Requests</a>@endcan
 <a class="dropdown-item" href="{{ route('designations.index') }}"><i class="bi bi-person-badge"></i>Designations</a>
-@can('manage-system')<a class="dropdown-item" href="{{ route('borrowing-settings.edit') }}"><i class="bi bi-sliders"></i>Borrowing Settings</a><a class="dropdown-item" href="{{ route('units.index') }}"><i class="bi bi-building"></i>Units</a><div class="dropdown-divider"></div><a class="dropdown-item" href="{{ route('roles.index') }}"><i class="bi bi-shield-lock"></i>Roles & Permissions</a>@endcan
+<a class="dropdown-item" href="{{ route('borrowing-settings.edit') }}"><i class="bi bi-sliders"></i>Borrowing Settings</a>
+<a class="dropdown-item" href="{{ route('units.index') }}"><i class="bi bi-building"></i>Units</a>
+@can('manage-system')
+<div class="dropdown-divider"></div>
+<a class="dropdown-item" href="{{ route('roles.index') }}"><i class="bi bi-shield-lock"></i>Roles & Permissions</a>
+@endcan
 @can('view-logs')<a class="dropdown-item" href="{{ route('audit-logs.index') }}"><i class="bi bi-clock-history"></i>Audit Logs</a>@endcan
 </div></li>
+@endcan
 @endcan
 
 </ul></div>

@@ -36,11 +36,15 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('view-catalog', fn(User $u) => $u->is_active && in_array($u->role, UserRole::cases(), true));
         Gate::define('member-portal', fn(User $u) => $u->is_active && $u->role === UserRole::Member);
         Gate::define('manage-system', fn (User $u) => $u->is_active && $u->role === UserRole::Admin);
-        Gate::define('manage-users', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
+        Gate::define('manage-administration', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
+        Gate::define('manage-users', fn (User $u) => $u->can('manage-administration'));
         Gate::define('manage-library', fn (User $u) => $u->is_active && $u->role !== UserRole::Member);
         Gate::define('delete-library', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
         Gate::define('view-reports', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
-        Gate::define('view-logs', fn (User $u) => $u->is_active && in_array($u->role, [UserRole::Admin, UserRole::Librarian], true));
+        Gate::define('view-logs', fn (User $u) => $u->can('manage-system'));
+        Gate::define('view-book-activity', fn (User $u) => $u->can('manage-administration'));
+        Gate::define('view-book-borrowers', fn (User $u) => $u->is_active
+            && in_array($u->role, [UserRole::Admin, UserRole::Librarian, UserRole::Staff], true));
         Gate::define('manage-user', function (User $actor, User $target) {
             if (!$actor->can('manage-users')) return false;
             if ($actor->role === UserRole::Admin) return true;

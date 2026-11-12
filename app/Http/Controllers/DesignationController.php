@@ -14,7 +14,7 @@ class DesignationController extends Controller
 {
     public function index(Request $r)
     {
-        Gate::authorize('manage-library');
+        Gate::authorize('manage-administration');
         $d = $r->validate(['search' => 'nullable|string|max:100', 'page' => 'nullable|integer|min:1']);
         $designations = Designation::withCount('users')->when($d['search'] ?? null, fn ($q, $s) => $q->where('name', 'like', '%'.$s.'%'))->orderBy('sort_order')->orderBy('name')->paginate(25)->withQueryString();
 
@@ -23,14 +23,14 @@ class DesignationController extends Controller
 
     public function create()
     {
-        Gate::authorize('manage-library');
+        Gate::authorize('manage-administration');
 
         return view('designations.form', ['designation' => new Designation(['is_active' => true])]);
     }
 
     public function store(Request $r)
     {
-        Gate::authorize('manage-library');
+        Gate::authorize('manage-administration');
         $data = $this->data($r);
         $data['slug'] = Str::limit(Str::slug($data['name']), 60, '').'-'.Str::lower(Str::random(10));
         $designation = DB::transaction(fn () => Designation::create($data));
@@ -40,21 +40,21 @@ class DesignationController extends Controller
 
     public function show(Request $r, Designation $designation)
     {
-        Gate::authorize('manage-library');
+        Gate::authorize('manage-administration');
 
         return response()->json(['data' => $designation]);
     }
 
     public function edit(Designation $designation)
     {
-        Gate::authorize('manage-library');
+        Gate::authorize('manage-administration');
 
         return view('designations.form', compact('designation'));
     }
 
     public function update(Request $r, Designation $designation)
     {
-        Gate::authorize('manage-library');
+        Gate::authorize('manage-administration');
         $data = $this->data($r, $designation);
         DB::transaction(fn () => $designation->update($data));
 
@@ -64,7 +64,7 @@ class DesignationController extends Controller
     public function destroy(Request $r, Designation $designation)
     {
         Gate::authorize('delete-library');
-        Gate::authorize('manage-library');
+        Gate::authorize('manage-administration');
         $r->validate(['confirmation' => 'required|in:DELETE']);
         DB::transaction(function () use ($designation) {
             $current = Designation::whereKey($designation->id)->lockForUpdate()->firstOrFail();
