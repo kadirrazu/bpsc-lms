@@ -11,8 +11,8 @@ class CoverStorage {
   $removed=0;
   $rows=DB::table('cover_file_deletions')->when($only,fn($q)=>$q->where('path',$only))->orderBy('id')->limit(200)->get();
   foreach($rows as $row){
-   if(!str_starts_with($row->path,'book-covers/'))continue;
-   if(Book::withTrashed()->where('cover_path',$row->path)->exists()){DB::table('cover_file_deletions')->where('id',$row->id)->delete();continue;}
+   if(!str_starts_with($row->path,'book-covers/') && !str_starts_with($row->path,'book-pdfs/'))continue;
+   if(Book::withTrashed()->where('cover_path',$row->path)->orWhere('pdf_path',$row->path)->exists()){DB::table('cover_file_deletions')->where('id',$row->id)->delete();continue;}
    try {
     $disk=Storage::disk('local');
     if($disk->exists($row->path) && !$disk->delete($row->path))throw new \RuntimeException('Cover deletion failed.');

@@ -4,7 +4,8 @@ use App\Http\Requests\BookRequest;
 use App\Models\{Book,Author,Publisher,Category,AuditLog};
 use App\Services\Library\CoverStorage;
 use App\Services\Library\Audit;
-use App\Services\Library\{BookSearch,CatalogRevision};
+use App\Services\Library\{BookSearch,CatalogRevision,CopyAccessions};
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB,Gate,Storage};
 use Illuminate\Validation\ValidationException;
@@ -24,22 +25,28 @@ class BookController extends Controller {
   return view('books.index',array_merge(compact('books','member','context'),$this->selectedEntries($r)));
  }
  public function create(Request $r){Gate::authorize('manage-library');return view('books.form',array_merge(['book'=>new Book(['number_of_copies'=>1])],$this->selectedEntries($r)));}
- public function edit(Request $r,Book $book){Gate::authorize('manage-library');$book->load(['authors','publisher','categories']);return view('books.form',array_merge(compact('book'),$this->selectedEntries($r,$book)));}
+ public function edit(Request $r,Book $book){Gate::authorize('manage-library');$book->load(['authors','publisher','categories','copies'=>fn ($query) => $query->where('is_active', true)->orderBy('id')]);return view('books.form',array_merge(compact('book'),$this->selectedEntries($r,$book)));}
  public function show(Book $book){Gate::authorize('manage-library');return $this->details($book,false);}
  public function memberShow(Book $book){Gate::authorize('member-portal');return $this->details($book,true);}
  private function details(Book $book, bool $member)
  {
   $book->load(['authors', 'publisher', 'categories']);
   $borrowers = Gate::allows('view-book-borrowers') ? $book->loans()->whereNull('returned_at')
-   ->select('user_id')->selectRaw('SUM(quantity) AS copies')->groupBy('user_id')
-   ->orderBy('user_id')->with('user:id,name')->get() : null;
+   ->select('user_id')->selectRaw('SUM(quantity) AS copies, MIN(issued_at) AS first_issued_at')->groupBy('user_id')
+   ->orderBy('first_issued_at')->orderBy('user_id')->with('user.designation')->get() : null;
+  $loanAccessions = $borrowers?->isNotEmpty() ? $book->loans()->whereNull('returned_at')->whereNotNull('book_copy_id')
+   ->orderBy('issued_at')->orderBy('id')->get(['user_id', 'accession_snapshot'])->groupBy('user_id') : collect();
   $issued = $borrowers === null ? $book->activeLoanQuantity() : (int) $borrowers->sum('copies');
+  if (! $book->isSoftCopy()) {
+   $book->load(['copies' => fn ($query) => $query->where('is_active', true)
+    ->withExists(['loans as on_loan' => fn ($loans) => $loans->whereNull('returned_at')])->orderBy('id')]);
+  }
   $memberLoan = $member ? $book->loans()->where('user_id', auth()->id())
    ->whereNull('returned_at')->latest('issued_at')->first() : null;
   $activity = Gate::allows('view-book-activity') ? AuditLog::where('subject_type', 'Book')
    ->where('subject_id', $book->id)->latest('id')->limit(20)->get() : null;
 
-  return view('books.show', compact('book', 'member', 'issued', 'activity', 'memberLoan', 'borrowers'));
+  return view('books.show', compact('book', 'member', 'issued', 'activity', 'memberLoan', 'borrowers', 'loanAccessions'));
  }
  private function selectedEntries(Request $r,?Book $book=null): array {
   $selected=[];
@@ -63,40 +70,171 @@ class BookController extends Controller {
   $after=['author_ids'=>array_map('intval',$data['author_ids']),'category_ids'=>array_map('intval',$data['category_ids'])];sort($after['author_ids']);sort($after['category_ids']);
   if($before!==$after){app(CatalogRevision::class)->touch();app(Audit::class)->record('book.relationships_changed',compact('before','after'),$book);}
  }
- private function bookFields(array $data): array {unset($data['author_ids'],$data['category_ids']);return $data;}
- public function store(BookRequest $r,CoverStorage $covers){
-  $path=null;
-  try {
-   if($r->hasFile('cover')){$path=$r->file('cover')->hashName('book-covers');if(!$r->file('cover')->store('book-covers','local'))throw new \RuntimeException('Cover could not be stored.');}
-   $data=$r->safe()->except(['cover','remove_cover']);$data['cover_path']=$path;
-   $book=DB::transaction(function()use($data){$this->lockEntries($data);$book=Book::create($this->bookFields($data));$this->relationships($book,$data);return $book;});
-  }catch(\Throwable $e){$covers->discard($path);throw $e;}
-  return redirect()->route('books.show',$book)->with('success','Book added.');
+ private function bookFields(array $data): array
+ {
+  unset($data['author_ids'], $data['category_ids'], $data['additional_accessions']);
+  $data['printed_currency'] = $data['printed_currency'] ?? 'BDT';
+  if (($data['format'] ?? 'hard') === 'soft') {
+   $data['number_of_copies'] = 0;
+   $data['call_number'] = '';
+   $data['shelf_number'] = null;
+  }
+
+  return $data;
  }
- public function update(BookRequest $r,Book $book,CoverStorage $covers){
-  $path=null;$retired=null;
+
+ public function store(BookRequest $request, CoverStorage $files, CopyAccessions $accessions)
+ {
+  $paths = [];
   try {
-   if($r->hasFile('cover')){$path=$r->file('cover')->hashName('book-covers');if(!$r->file('cover')->store('book-covers','local'))throw new \RuntimeException('Cover could not be stored.');}
-   $data=$r->safe()->except(['cover','remove_cover']);
-   DB::transaction(function()use($r,$book,$covers,$path,$data,&$retired){
-    $this->lockEntries($data);$current=Book::whereKey($book->id)->lockForUpdate()->firstOrFail();
-    if((int)$data['number_of_copies']<$current->activeLoanQuantity())throw ValidationException::withMessages(['number_of_copies'=>'Copies cannot be fewer than the copies currently issued.']);
-    if($path || $r->boolean('remove_cover')){$retired=$current->cover_path;$covers->defer($retired);$data['cover_path']=$path;}
-    $current->update($this->bookFields($data));$this->relationships($current,$data);
+   $data = $request->safe()->except(['cover', 'remove_cover', 'pdf']);
+   $numbers = $accessions->validate($data);
+   $paths = $this->storeFiles($request, $files);
+   $book = DB::transaction(function () use ($data, $paths, $numbers, $accessions) {
+    $this->lockEntries($data);
+    $book = Book::create($paths + $this->bookFields($data));
+    $accessions->sync($book, $numbers);
+    $this->relationships($book, $data);
+    return $book;
    });
-  }catch(\Throwable $e){$covers->discard($path);throw $e;}
-  if($retired)$covers->purge($retired);return redirect()->route('books.show',$book)->with('success','Book updated.');
+  } catch (\Throwable $error) {
+   $this->discardFiles($paths, $files);
+   if ($error instanceof UniqueConstraintViolationException) {
+    throw ValidationException::withMessages(['accession_number' => 'This accession is already in use.']);
+   }
+   throw $error;
+  }
+
+  return redirect()->route('books.show', $book)->with('success', 'Book added.');
  }
- public function destroy(Request $r,Book $book,CoverStorage $covers){
-  Gate::authorize('delete-library');$r->validate(['confirmation'=>'required|in:DELETE']);
-  $retired=null;
-  DB::transaction(function()use($book,$covers,&$retired){
-   $current=Book::whereKey($book->id)->lockForUpdate()->firstOrFail();
-   if($current->loans()->whereNull('returned_at')->exists())throw ValidationException::withMessages(['book'=>'This book is currently issued and cannot be deleted. Return all issued copies first.']);
-   $retired=$current->cover_path;$covers->defer($retired);$current->cover_path=null;$current->save();$current->delete();
+
+ public function update(BookRequest $request, Book $book, CoverStorage $files, CopyAccessions $accessions)
+ {
+  $paths = [];
+  $retired = [];
+  try {
+   $data = $request->safe()->except(['cover', 'remove_cover', 'pdf']);
+   $paths = $this->storeFiles($request, $files);
+   DB::transaction(function () use ($request, $book, $files, $paths, $data, $accessions, &$retired) {
+    $this->lockEntries($data);
+    $current = Book::whereKey($book->id)->lockForUpdate()->firstOrFail();
+    $data['format'] = $current->format;
+    $issued = $current->activeLoanQuantity();
+    if (! $current->isSoftCopy() && (int) $data['number_of_copies'] < $issued) {
+     throw ValidationException::withMessages(['number_of_copies' => 'Copies cannot be fewer than the copies currently issued.']);
+    }
+    $numbers = $accessions->validate($data, $current->id);
+    if ($request->boolean('remove_cover')) {
+     $data['cover_path'] = null;
+    }
+    foreach (array_intersect_key($paths + $data, array_flip(['cover_path', 'pdf_path'])) as $field => $path) {
+     $retired[] = $current->{$field};
+     $files->defer($current->{$field});
+    }
+    $current->update($paths + $this->bookFields($data));
+    $accessions->sync($current, $numbers);
+    $this->relationships($current, $data);
+   });
+  } catch (\Throwable $error) {
+   $this->discardFiles($paths, $files);
+   if ($error instanceof UniqueConstraintViolationException) {
+    throw ValidationException::withMessages(['accession_number' => 'This accession is already in use.']);
+   }
+   throw $error;
+  }
+  $this->discardRetired($retired, $files);
+
+  return redirect()->route('books.show', $book)->with('success', 'Book updated.');
+ }
+
+ public function destroy(Request $request, Book $book, CoverStorage $files)
+ {
+  Gate::authorize('delete-library');
+  $request->validate(['confirmation' => 'required|in:DELETE']);
+  $retired = DB::transaction(function () use ($book, $files) {
+   $current = Book::whereKey($book->id)->lockForUpdate()->firstOrFail();
+   if ($current->loans()->whereNull('returned_at')->exists()) {
+    throw ValidationException::withMessages(['book' => 'This book is currently issued and cannot be deleted. Return all issued copies first.']);
+   }
+   $paths = [$current->cover_path, $current->pdf_path];
+   foreach ($paths as $path) {
+    $files->defer($path);
+   }
+   $current->update(['cover_path' => null, 'pdf_path' => null]);
+   $current->delete();
+   return $paths;
   });
-  if($retired)$covers->purge($retired);return redirect()->route('books.index')->with('success','Book deleted.');
+  $this->discardRetired($retired, $files);
+
+  return redirect()->route('books.index')->with('success', 'Book deleted.');
  }
+
+ private function storeFiles(BookRequest $request, CoverStorage $files): array
+ {
+  $paths = [];
+  try {
+   foreach (['cover' => 'book-covers', 'pdf' => 'book-pdfs'] as $field => $directory) {
+    if ($request->hasFile($field)) {
+     $file = $request->file($field);
+     $filename = $field === 'pdf'
+      ? pathinfo($file->hashName(), PATHINFO_FILENAME).'.'.strtolower($file->getClientOriginalExtension())
+      : $file->hashName();
+     $paths[$field.'_path'] = $directory.'/'.$filename;
+     if (! $file->storeAs($directory, $filename, 'local')) {
+      throw new \RuntimeException("The $field file could not be stored.");
+     }
+    }
+   }
+  } catch (\Throwable $error) {
+   $this->discardFiles($paths, $files);
+   throw $error;
+  }
+
+  return $paths;
+ }
+
+ private function discardFiles(array $paths, CoverStorage $files): void
+ {
+  foreach ($paths as $path) {
+   $files->discard($path);
+  }
+ }
+
+ private function discardRetired(array $paths, CoverStorage $files): void
+ {
+  foreach (array_filter($paths) as $path) {
+   $files->purge($path);
+  }
+ }
+
+ public function download(Request $request, Book $book)
+ {
+  Gate::authorize('member-portal');
+  abort_if($request->isMethod('HEAD'), 405);
+
+  return DB::transaction(function () use ($book) {
+   $current = Book::whereKey($book->id)->lockForUpdate()->firstOrFail();
+   $disk = Storage::disk('local');
+   abort_unless($current->isSoftCopy() && $current->pdf_path && $disk->exists($current->pdf_path), 404);
+   $stream = $disk->readStream($current->pdf_path);
+   abort_unless(is_resource($stream), 404);
+   $current->increment('download_count');
+   $extension = $current->digitalExtension();
+   app(Audit::class)->record('book.'.$extension.'_downloaded', [], $current);
+   return response()->streamDownload(function () use ($stream) {
+    try {
+     fpassthru($stream);
+    } finally {
+     fclose($stream);
+    }
+   }, 'library-book-'.$current->id.'.'.$extension, [
+    'Content-Type' => $extension === 'epub' ? 'application/epub+zip' : 'application/pdf',
+    'Cache-Control' => 'private, no-store',
+    'X-Content-Type-Options' => 'nosniff',
+   ]);
+  });
+ }
+
  public function cover(Request $r,Book $book){
   Gate::authorize('view-catalog');
   abort_unless($book->cover_path && Storage::disk('local')->exists($book->cover_path),404);

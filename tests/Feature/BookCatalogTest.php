@@ -32,13 +32,17 @@ class BookCatalogTest extends TestCase
             'accession_number' => $accession, 'title_bn' => 'বাংলা বই', 'title_en' => 'English Book Title',
             'author_ids' => [$first->id, $second->id], 'publisher_id' => $publisher->id,
             'category_ids' => [$category->id, $other->id], 'call_number' => '800.02.MK',
-            'shelf_number' => null, 'publication_year' => null, 'number_of_copies' => 3,
+            'shelf_number' => null, 'publication_year' => null, 'number_of_copies' => 3, 'additional_accessions' => $accession.'-2' . "\n" . $accession.'-3',
         ];
     }
 
     private function book(array $override = []): Book
     {
         $data = array_replace($this->data(), $override);
+        $data['additional_accessions'] = implode("\n", array_map(
+            fn ($copy) => $data['accession_number'].'-'.$copy,
+            array_slice(range(1, $data['number_of_copies']), 1),
+        ));
         $this->post('/books', $data)->assertRedirect();
         return Book::where('accession_number', $data['accession_number'])->firstOrFail();
     }
@@ -329,6 +333,166 @@ class BookCatalogTest extends TestCase
         $this->put('/books/'.$second->id,$this->data('001'))->assertSessionHasErrors('accession_number');
         $this->assertSame('002',$second->fresh()->accession_number);
     }
+    public function test_registered_copies_are_searchable_unique_and_allocated_to_the_correct_loans(): void
+    {
+        $this->loginRole();
+        $form = $this->data('00100');
+        $this->post('/books', array_replace($form, ['additional_accessions' => '00101']))
+            ->assertSessionHasErrors('additional_accessions');
+        $this->post('/books', array_replace($form, ['additional_accessions' => "X\nx"]))
+            ->assertSessionHasErrors('additional_accessions');
+        $this->post('/books', array_replace($form, ['additional_accessions' => '00101; 00102; 00103']))
+            ->assertSessionHasErrors('additional_accessions');
+        $form['additional_accessions'] = ' 00101 ;  00102 ';
+        $form['printed_price'] = '12.50';
+        $form['printed_currency'] = 'USD';
+        $form['price'] = '1400.00';
+        $this->post('/books', $form)->assertRedirect();
+        $book = Book::firstOrFail();
+        $this->assertSame(['00100', '00101', '00102'], $book->copies()->orderBy('id')->pluck('accession_number')->all());
+        $this->get('/books?accession_number=00102')->assertOk()->assertSee($book->title_bn);
+        $this->getJson('/loan-options/books?q=00102')->assertOk()->assertJsonPath('results.0.matched_accession', '00102')
+            ->assertJsonPath('results.0.label', $book->title_bn.' - '.$book->authors->pluck('title_bn')->implode(', '));
+        $this->getJson(route('loans.copy-options', $book))->assertOk()->assertExactJson([
+            'accessions' => ['00100', '00101', '00102'], 'legacyStock' => false,
+        ]);
+        $this->get(route('loans.create', ['book_id' => $book->id]))->assertOk()
+            ->assertSee('data-loan-serial', false)->assertSee('data-loan-book-authors', false)
+            ->assertSee('Find an available accession')->assertSee('role="combobox"', false)
+            ->assertSee('data-copy-options', false)->assertDontSee('<select', false)->assertDontSee($book->title_bn.' — '.$book->accession_number);
+        $this->get('/books/'.$book->id)->assertOk()->assertSee('12.50 $ (USD)')->assertSee('1400.00');
+        $this->post('/books', array_replace($this->data('00102'), ['number_of_copies' => 1, 'additional_accessions' => null]))
+            ->assertSessionHasErrors('accession_number');
+
+        $first = User::factory()->create(['role' => UserRole::Member, 'name' => 'Later Reader']);
+        $second = User::factory()->create([
+            'role' => UserRole::Member, 'name' => 'Earlier Reader', 'unit' => 'Unit 01',
+            'designation_id' => \App\Models\Designation::where('slug', 'librarian')->value('id'),
+        ]);
+        $this->freezeTime();
+        $payload = ['book_id' => $book->id, 'confirmed' => true, 'copy_accessions' => [$book->id => '00102']];
+        $this->post(route('loans.store'), $payload + ['member_id' => $first->id])->assertRedirect(route('issue-requests.index'));
+        $loan = BookLoan::firstOrFail();
+        $this->assertSame('00102', $loan->accession_snapshot);
+        $this->assertNotNull($loan->book_copy_id);
+        $this->getJson(route('loans.copy-options', $book))->assertOk()->assertJsonPath('accessions', ['00100', '00101']);
+        $this->post(route('loans.store'), $payload + ['member_id' => $second->id])->assertSessionHasErrors('loan');
+        BookLoan::create(['book_id' => $book->id, 'user_id' => $second->id, 'issued_at' => now()->subDay()]);
+        $this->get('/books/'.$book->id)->assertOk()->assertSeeInOrder(['Earlier Reader', 'Librarian · Unit 01', 'Later Reader']);
+        foreach (['/issue-requests?q=00102', '/issue-register?q=00102'] as $page) {
+            $this->get($page)->assertOk()->assertSee('Accession / Title / Author')
+                ->assertSee('href="'.route('books.show', $book).'"', false)
+                ->assertSeeInOrder(['00102', $book->title_bn, $book->authors->first()->title_bn]);
+        }
+
+        $form['number_of_copies'] = 2;
+        $form['additional_accessions'] = '00101';
+        $this->put('/books/'.$book->id, $form)->assertSessionHasErrors('additional_accessions');
+        $loan->update(['returned_at' => now()]);
+        $this->put('/books/'.$book->id, $form)->assertRedirect(route('books.show', $book));
+        $this->assertDatabaseHas('book_copies', ['accession_number' => '00102', 'is_active' => false]);
+        $this->post('/books', array_replace($this->data('00102'), ['number_of_copies' => 1, 'additional_accessions' => null]))
+            ->assertSessionHasErrors('accession_number');
+    }
+
+    public function test_soft_copy_pdf_is_private_downloadable_by_members_and_never_issued(): void
+    {
+        Storage::fake('local');
+        $this->loginRole();
+        $form = array_replace($this->data('PDF-001'), ['format' => 'soft', 'call_number' => null, 'additional_accessions' => null]);
+        $this->post('/books', $form)->assertSessionHasErrors('pdf');
+        $form['pdf'] = UploadedFile::fake()->createWithContent('book.pdf', "%PDF-1.4\n%%EOF\n");
+        $this->post('/books', $form)->assertRedirect();
+        $book = Book::firstOrFail();
+        $this->assertTrue($book->isSoftCopy());
+        $this->assertSame(0, $book->number_of_copies);
+        Storage::disk('local')->assertExists($book->pdf_path);
+        $download = route('member.books.download', $book);
+        $this->get($download)->assertForbidden();
+        $this->get('/books/'.$book->id)->assertOk()->assertDontSee('href="'.route('loans.create', ['book_id' => $book->id]).'"', false);
+        $this->getJson('/loan-options/books?q=PDF-001')->assertExactJson(['results' => []]);
+        $member = User::factory()->create(['role' => UserRole::Member]);
+        $this->post(route('loans.store'), ['book_id' => $book->id, 'member_id' => $member->id, 'confirmed' => true])
+            ->assertSessionHasErrors('loan');
+
+        $member = $this->loginRole(UserRole::Member);
+        $this->get(route('member.books.show', $book))->assertOk()->assertSee('Download PDF')->assertDontSee('Request This Book');
+        $this->post(route('member.books.request', $book))->assertSessionHasErrors('request');
+        $this->head($download)->assertStatus(405);
+        $response = $this->get($download)->assertOk()->assertHeader('Content-Type', 'application/pdf')
+            ->assertDownload('library-book-'.$book->id.'.pdf');
+        $this->assertStringStartsWith('%PDF-', $response->streamedContent());
+        $this->assertSame(1, $book->fresh()->download_count);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'book.pdf_downloaded', 'subject_id' => $book->id, 'actor_id' => $member->id]);
+        $this->assertDatabaseCount('book_loans', 0);
+
+        $this->loginRole();
+        $original = $book->pdf_path;
+        $form['pdf'] = UploadedFile::fake()->createWithContent('revised.pdf', "%PDF-1.5\n%%EOF\n");
+        $this->put('/books/'.$book->id, $form)->assertRedirect(route('books.show', $book));
+        Storage::disk('local')->assertMissing($original);
+        $replacement = $book->fresh()->pdf_path;
+        Storage::disk('local')->assertExists($replacement);
+        $this->delete('/books/'.$book->id, ['confirmation'=>'DELETE'])->assertRedirect('/books');
+        Storage::disk('local')->assertMissing($replacement);
+    }
+
+    public function test_member_request_approval_records_the_selected_available_accession(): void
+    {
+        $this->loginRole();
+        $book = $this->book();
+        $member = $this->loginRole(UserRole::Member);
+        $this->getJson(route('loans.copy-options', $book))->assertForbidden();
+        $this->post(route('member.books.request', $book))->assertRedirect();
+        $issue = \App\Models\BookIssueRequest::firstOrFail();
+
+        $this->loginRole(UserRole::Librarian);
+        $this->get('/issue-requests')->assertOk()->assertSee('data-copy-name="copy_accession"', false)
+            ->assertSee(route('loans.copy-options', $book));
+        $this->post(route('issue-requests.review', $issue), ['decision' => 'approve', 'copy_accession' => 'UNKNOWN'])
+            ->assertSessionHasErrors('loan');
+        $this->assertSame('pending', $issue->fresh()->status);
+        $accession = $book->accession_number.'-2';
+        $this->post(route('issue-requests.review', $issue), ['decision' => 'approve', 'copy_accession' => $accession])
+            ->assertRedirect(route('issue-requests.index'));
+        $this->assertDatabaseHas('book_loans', ['user_id' => $member->id, 'accession_snapshot' => $accession]);
+        $this->getJson(route('loans.copy-options', $book))->assertOk()->assertJsonMissing([$accession]);
+    }
+
+    public function test_epub_is_validated_and_downloaded_as_epub(): void
+    {
+        Storage::fake('local');
+        $this->loginRole();
+        $form = array_replace($this->data('EPUB-001'), [
+            'format' => 'soft', 'call_number' => null, 'additional_accessions' => null,
+            'pdf' => UploadedFile::fake()->createWithContent('wrong.epub', "%PDF-1.4\n%%EOF\n"),
+        ]);
+        $this->post('/books', $form)->assertSessionHasErrors('pdf');
+        $file = tempnam(sys_get_temp_dir(), 'lms-epub-');
+        try {
+            $archive = new \ZipArchive;
+            $this->assertTrue($archive->open($file, \ZipArchive::OVERWRITE));
+            $archive->addFromString('mimetype', 'application/epub+zip');
+            $archive->setCompressionName('mimetype', \ZipArchive::CM_STORE);
+            $archive->addFromString('META-INF/container.xml', '<container/>');
+            $archive->close();
+            $form['pdf'] = UploadedFile::fake()->createWithContent('book.epub', file_get_contents($file));
+            $this->post('/books', $form)->assertRedirect();
+        } finally {
+            unlink($file);
+        }
+        $book = Book::firstOrFail();
+        $this->assertStringEndsWith('.epub', $book->pdf_path);
+        $member = $this->loginRole(UserRole::Member);
+        $this->get(route('member.books.show', $book))->assertOk()->assertSee('Download EPUB');
+        $response = $this->get(route('member.books.download', $book))->assertOk()
+            ->assertHeader('Content-Type', 'application/epub+zip')
+            ->assertDownload('library-book-'.$book->id.'.epub');
+        $this->assertStringStartsWith('PK', $response->streamedContent());
+        $this->assertSame(1, $book->fresh()->download_count);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'book.epub_downloaded', 'actor_id' => $member->id, 'subject_id' => $book->id]);
+    }
+
     public function test_database_rejects_duplicate_accession_even_when_validation_is_bypassed(): void
     {
         $this->loginRole();$first=$this->book();$data=$first->only(['accession_number','title_bn','publisher_id','call_number','number_of_copies']);

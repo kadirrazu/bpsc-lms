@@ -16,6 +16,10 @@
 
     function sync() {
         const selected = [...list.querySelectorAll('input[name="book_ids[]"]')];
+        list.querySelectorAll('[data-loan-serial]').forEach((serial, index) => {
+            serial.textContent = index + 1;
+            serial.setAttribute('aria-label', `Serial ${index + 1}`);
+        });
         const url = new URL(endpoint);
         selected.forEach(input => url.searchParams.append('exclude[]', input.value));
         if (memberValue.value) url.searchParams.set('member_id', memberValue.value);
@@ -31,7 +35,7 @@
     bookValue.addEventListener('change', event => {
         const id = bookValue.value;
         if (!id || !event.detail) return;
-        const {label, available_copies: availableCopies} = event.detail;
+        const {title, authors, available_copies: availableCopies, matched_accession: matchedAccession} = event.detail;
         bookValue.value = '';
         bookInput.value = '';
 
@@ -41,16 +45,30 @@
         const item = document.createElement('li');
         item.className = 'loan-desk-book';
         item.dataset.loanBook = '';
+        const serial = document.createElement('span');
+        serial.className = 'loan-desk-serial';
+        serial.dataset.loanSerial = '';
         const details = document.createElement('div');
+        details.className = 'loan-desk-book-details';
         const text = document.createElement('div');
-        text.className = 'bn-text';
+        text.className = 'bn-text fw-semibold';
         text.dataset.loanBookLabel = '';
-        text.textContent = label;
+        text.textContent = title;
+        const author = document.createElement('div');
+        author.className = 'bn-text small text-secondary';
+        author.dataset.loanBookAuthors = '';
+        author.textContent = authors || 'Author not recorded';
         const copies = document.createElement('div');
         copies.className = 'small text-secondary mt-1';
         copies.dataset.loanCopyCounts = '';
         copies.textContent = `Available: ${availableCopies} · Issuing: 1`;
-        details.append(text, copies);
+        const picker = document.createElement('div');
+        picker.id = `copy-picker-${id}`;
+        picker.dataset.copyUrl = list.dataset.copyUrlTemplate.replace('BOOK_ID', id);
+        picker.dataset.copyName = `copy_accessions[${id}]`;
+        picker.dataset.copySelected = matchedAccession ?? '';
+        picker.dataset.copyEager = '';
+        details.append(text, author, copies, picker);
         const value = document.createElement('input');
         value.type = 'hidden';
         value.name = 'book_ids[]';
@@ -60,9 +78,10 @@
         remove.className = 'btn btn-sm btn-outline-secondary';
         remove.dataset.removeLoanBook = '';
         remove.textContent = 'Remove';
-        remove.setAttribute('aria-label', `Remove ${label}`);
-        item.append(details, value, remove);
+        remove.setAttribute('aria-label', `Remove ${title}`);
+        item.append(serial, details, value, remove);
         list.append(item);
+        window.setupCopyAccessionPicker(picker);
         sync();
     });
     list.addEventListener('click', event => {

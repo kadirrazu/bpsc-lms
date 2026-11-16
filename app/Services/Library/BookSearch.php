@@ -21,8 +21,16 @@ class BookSearch {
   if(!empty($filters['category_id']))$query->whereIn('books.id',DB::table('book_categories')->select('book_id')->where('category_id',$filters['category_id']));
   foreach(['accession_number','call_number'] as $field){
    $term=trim($filters[$field]??'');if($term==='')continue;
-   if(in_array($filters['number_match']??'exact',['prefix','partial'],true))$query->whereRaw("books.$field LIKE ? ESCAPE '!'",[$this->pattern($term,($filters['number_match']??'exact')==='prefix')]);
-   else $query->where('books.'.$field,$term);
+   $match = $filters['number_match'] ?? 'exact';
+   $whereNumber = fn ($q, $column) => $match === 'exact'
+    ? $q->where($column, $term)
+    : $q->whereRaw("$column LIKE ? ESCAPE '!'", [$this->pattern($term, $match === 'prefix')]);
+   $query->where(function ($q) use ($whereNumber, $field) {
+    $whereNumber($q, 'books.'.$field);
+    if ($field === 'accession_number') {
+     $q->orWhereHas('copies', fn ($copies) => $whereNumber($copies->where('is_active', true), 'book_copies.accession_number'));
+    }
+   });
   }
   foreach(array_slice(preg_split('/\s+/u',trim($filters['q']??''),-1,PREG_SPLIT_NO_EMPTY),0,8) as $term){
    $pattern=$this->pattern($term);
@@ -30,6 +38,7 @@ class BookSearch {
    // Flat title/identifier predicates can short-circuit broad matches without a UNION sort.
    $query->where(function($q)use($pattern){
     foreach(['title_bn','title_en','accession_number','call_number','shelf_number'] as $field)$q->orWhereRaw("books.$field LIKE ? ESCAPE '!'",[$pattern]);
+    $q->orWhereHas('copies', fn ($copies) => $copies->where('is_active', true)->whereRaw("accession_number LIKE ? ESCAPE '!'", [$pattern]));
     $q->orWhereIn('books.id',DB::table('book_authors')->select('book_id')->whereIn('author_id',$this->nameIds('authors',$pattern)));
     $q->orWhereIn('books.publisher_id',$this->nameIds('publishers',$pattern));
     $q->orWhereIn('books.id',DB::table('book_categories')->select('book_id')->whereIn('category_id',$this->nameIds('categories',$pattern)));

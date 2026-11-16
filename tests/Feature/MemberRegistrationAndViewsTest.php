@@ -34,8 +34,9 @@ class MemberRegistrationAndViewsTest extends TestCase {
  }
  public function test_admin_can_approve_once_and_member_can_sign_in(): void {
   $data=$this->payload();$this->post('/register',$data);$admin=$this->login(UserRole::Admin);$entry=MemberRegistration::firstOrFail();
-  $this->get('/dashboard')->assertOk()->assertSee('Pending Member Registrations: 1');$this->get('/users/registration-requests')->assertOk()->assertSee($data['mobile_number']);
+  $this->get('/dashboard')->assertOk()->assertViewHas('pendingRegistrations', 1)->assertSee('Pending Member Registrations');$this->get('/users/registration-requests')->assertOk()->assertSee($data['mobile_number']);
   $this->post(route('users.registrations.approve',$entry))->assertRedirect();
+  $this->get('/dashboard')->assertOk()->assertDontSee('Pending Member Registrations');
   $user=User::where('email',$data['email'])->firstOrFail();$this->assertSame(UserRole::Member,$user->role);$this->assertTrue($user->is_active);$this->assertTrue(Hash::check($data['password'],$user->password));$this->assertSame($data['mobile_number'],$user->mobile_number);
   $this->assertSame($admin->id,$entry->fresh()->reviewed_by);$this->assertNull($entry->fresh()->password);
   $this->post(route('users.registrations.approve',$entry))->assertSessionHasErrors('registration');
@@ -45,7 +46,11 @@ class MemberRegistrationAndViewsTest extends TestCase {
  public function test_librarian_can_approve_but_staff_and_members_cannot(): void {
   $data=$this->payload();$this->post('/register',$data);$entry=MemberRegistration::firstOrFail();
   foreach([UserRole::Staff,UserRole::Member] as $role){$this->login($role);$this->get('/users/registration-requests')->assertForbidden();$this->post(route('users.registrations.approve',$entry))->assertForbidden();}
-  $this->login(UserRole::Librarian);$this->post(route('users.registrations.approve',$entry))->assertRedirect();$this->assertSame('approved',$entry->fresh()->status);
+  $this->login(UserRole::Staff);
+  $this->get('/dashboard')->assertOk()->assertViewHas('pendingRegistrations', 0)->assertDontSee('Pending Member Registrations');
+  $this->login(UserRole::Librarian);
+  $this->get('/dashboard')->assertOk()->assertViewHas('pendingRegistrations', 1)->assertSee('Pending Member Registrations');
+  $this->post(route('users.registrations.approve',$entry))->assertRedirect();$this->assertSame('approved',$entry->fresh()->status);
  }
  public function test_approval_rejects_email_collision_without_consuming_request(): void {
   $data=$this->payload();$this->post('/register',$data);User::factory()->create(['email'=>$data['email']]);$this->login(UserRole::Admin);$entry=MemberRegistration::firstOrFail();

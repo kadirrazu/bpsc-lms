@@ -16,6 +16,7 @@ Route::middleware('auth')->group(function () {
  Route::middleware('can:member-portal')->group(function () {
   Route::get('/member',[\App\Http\Controllers\MemberHomeController::class,'index'])->name('member.home');
   Route::get('/member/catalog',[\App\Http\Controllers\BookController::class,'catalog'])->name('member.catalog');
+  Route::get('/member/catalog/{book}/download',[\App\Http\Controllers\BookController::class,'download'])->name('member.books.download');
   Route::get('/member/catalog/{book}',[\App\Http\Controllers\BookController::class,'memberShow'])->name('member.books.show');
   Route::post('/member/requests/{issueRequest}/withdraw',[\App\Http\Controllers\BookIssueRequestController::class,'withdraw'])->name('member.requests.withdraw');
   Route::get('/member/requests',[\App\Http\Controllers\BookIssueRequestController::class,'mine'])->name('member.requests');
@@ -27,6 +28,7 @@ Route::middleware('auth')->group(function () {
  Route::middleware('can:manage-library')->group(function(){
   Route::get('/loans/create',[\App\Http\Controllers\LoanController::class,'create'])->name('loans.create');
   Route::post('/loans',[\App\Http\Controllers\LoanController::class,'store'])->name('loans.store');
+  Route::get('/loan-options/copies/{book}',[\App\Http\Controllers\LoanController::class,'copyOptions'])->middleware('throttle:120,1')->name('loans.copy-options');
   Route::get('/loan-options/{kind}',[\App\Http\Controllers\LoanController::class,'options'])->whereIn('kind',['books','members'])->middleware('throttle:120,1')->name('loans.options');
  });
  Route::middleware('can:manage-library')->group(function(){

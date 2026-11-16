@@ -27,7 +27,7 @@ class CatalogImportAndAdminTest extends TestCase {
   $a=Author::create(['title_bn'=>'লেখক','title_en'=>'Author']);$b=Author::create(['title_bn'=>'আরেক লেখক']);$p=Publisher::create(['title_bn'=>'প্রকাশনী']);$c=Category::where('title_en','Uncategorized')->firstOrFail();return [$a,$b,$p,$c];
  }
  private function bookRow(string $accession='000001'): array {
-  return [$accession,'বই','Book',Author::orderBy('id')->pluck('id')->implode(' | '),(string)Publisher::firstOrFail()->id,(string)Category::where('title_en','Uncategorized')->firstOrFail()->id,'800.02.MK','A1','2026','2','350.50','Gift'];
+  return [$accession,'বই','Book',Author::orderBy('id')->pluck('id')->implode(' | '),(string)Publisher::firstOrFail()->id,(string)Category::where('title_en','Uncategorized')->firstOrFail()->id,'800.02.MK','A1','2026','2','350.50','Gift',$accession.'-02','19.50','USD'];
  }
  public function test_production_and_staging_admin_command_stop_before_any_prompt(): void {
   foreach(['production','staging'] as $env){$this->app->detectEnvironment(fn()=>$env);$this->artisan('library:create-admin')->expectsOutput('This command is available only in development (APP_ENV=local or development).')->assertExitCode(1);}
@@ -48,7 +48,7 @@ class CatalogImportAndAdminTest extends TestCase {
  public function test_book_import_preserves_identifiers_multiselect_price_and_collection(): void {
   $this->login(UserRole::Staff);$this->masterData();$file=$this->upload(CatalogImport::BOOK_HEADERS,[$this->bookRow()]);
   $this->importUpload('books',['file'=>$file])->assertRedirect(route('books.index'));
-  $book=Book::firstOrFail();$this->assertSame('000001',$book->accession_number);$this->assertSame(2,$book->authors()->count());$this->assertSame(1,$book->categories()->count());$this->assertSame('350.50',$book->price);$this->assertSame('Gift',$book->collection_method);$this->assertSame(0,$book->total_issue_count);
+  $book=Book::firstOrFail();$this->assertSame('000001',$book->accession_number);$this->assertSame(2,$book->authors()->count());$this->assertSame(1,$book->categories()->count());$this->assertSame('350.50',$book->price);$this->assertSame('19.50',$book->printed_price);$this->assertSame('USD',$book->printed_currency);$this->assertSame(['000001','000001-02'],$book->copies()->orderBy('id')->pluck('accession_number')->all());$this->assertSame('Gift',$book->collection_method);$this->assertSame(0,$book->total_issue_count);
  }
  public function test_unknown_relation_and_duplicate_accession_leave_no_partial_books(): void {
   $this->login();$this->masterData();$row=$this->bookRow('000002');$row[3]='অজানা লেখক';

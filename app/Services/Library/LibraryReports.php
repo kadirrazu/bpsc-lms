@@ -109,14 +109,14 @@ class LibraryReports
     {
         $books = $this->inPeriod(DB::table('books'), 'created_at', $filters)
             ->when(isset($filters['method']), fn ($q) => $q->where('collection_method', $filters['method']));
-        $totals = (clone $books)->selectRaw('COUNT(*) AS titles, SUM(number_of_copies) AS copies, SUM(price * number_of_copies) AS value, COUNT(*) - COUNT(price) AS unpriced')->first();
+        $totals = (clone $books)->selectRaw("COUNT(*) AS titles, SUM(number_of_copies) AS copies, SUM(price * CASE WHEN format = 'soft' THEN 1 ELSE number_of_copies END) AS value, COUNT(*) - COUNT(price) AS unpriced")->first();
 
         return [
-            'rows' => $books->selectRaw("created_at AS added, accession_number AS accession, title_bn AS book, collection_method AS method, number_of_copies AS copies, price AS unit_price, price * number_of_copies AS value, CASE WHEN deleted_at IS NULL THEN 'In catalog' ELSE 'Archived' END AS status")
+            'rows' => $books->selectRaw("created_at AS added, accession_number AS accession, title_bn AS book, collection_method AS method, number_of_copies AS copies, price AS unit_price, price * CASE WHEN format = 'soft' THEN 1 ELSE number_of_copies END AS value, CASE WHEN deleted_at IS NULL THEN 'In catalog' ELSE 'Archived' END AS status")
                 ->orderByDesc('created_at')->orderByDesc('id'),
             'columns' => ['added' => 'Added At', 'accession' => 'Accession', 'book' => 'Book Title', 'method' => 'Collection Method', 'copies' => 'Copies', 'unit_price' => 'Unit Price (BDT)', 'value' => 'Value (BDT)', 'status' => 'Catalog Status'],
             'summary' => ['Titles added' => (int) $totals->titles, 'Recorded copies' => (int) $totals->copies, 'Known value (BDT)' => number_format((float) $totals->value, 2), 'Titles without price' => (int) $totals->unpriced],
-            'note' => 'Includes archived books. Value uses the current recorded unit price × copies. Titles without a recorded price are excluded from value totals.',
+            'note' => 'Includes archived books. Value uses Purchase Price × copies for hard copies and the recorded Purchase Price for each PDF. Titles without a recorded Purchase Price are excluded from value totals.',
         ];
     }
 
@@ -236,7 +236,7 @@ class LibraryReports
             : $filters;
         $movement = $this->movement($period, 7)->get()->keyBy('period');
         $books = $this->inPeriod(DB::table('books'), 'created_at', $period)
-            ->selectRaw('SUBSTR(created_at, 1, 7) AS period, COUNT(*) AS titles, SUM(number_of_copies) AS copies, SUM(price * number_of_copies) AS value')
+            ->selectRaw("SUBSTR(created_at, 1, 7) AS period, COUNT(*) AS titles, SUM(number_of_copies) AS copies, SUM(price * CASE WHEN format = 'soft' THEN 1 ELSE number_of_copies END) AS value")
             ->groupBy('period')->get()->keyBy('period');
         $members = $this->inPeriod(DB::table('users')->where('role', UserRole::Member->value), 'created_at', $period)
             ->selectRaw('SUBSTR(created_at, 1, 7) AS period, COUNT(*) AS members')->groupBy('period')->pluck('members', 'period');
@@ -273,7 +273,7 @@ class LibraryReports
                 'Member accounts added' => (int) $totals['members'],
                 'Known value (BDT)' => number_format($totals['value'], 2),
             ],
-            'note' => 'Monthly totals include only dates in the selected period, including archived records. Acquisition value uses recorded price and copies. Member counts use account creation dates and the recorded member role.',
+            'note' => 'Monthly totals include only dates in the selected period, including archived records. Acquisition value uses the recorded Purchase Price and physical copy count, plus the Purchase Price of each PDF. Member counts use account creation dates and the recorded member role.',
         ];
     }
 }

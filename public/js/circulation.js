@@ -73,6 +73,13 @@
             const label = book.querySelector('[data-loan-book-label]');
             const copies = book.querySelector('[data-loan-copy-counts]');
             item.append(label.cloneNode(true), copies.cloneNode(true));
+            const accession = book.querySelector('[data-issued-copy]')?.value.trim();
+            if (accession) {
+                const selectedCopy = document.createElement('div');
+                selectedCopy.className = 'small text-secondary mt-1';
+                selectedCopy.textContent = `Copy accession: ${accession}`;
+                item.append(selectedCopy);
+            }
             return item;
         }));
         dialog.querySelector('button[value="confirm"]').textContent = issue ? 'Confirm Issue' : 'Confirm';

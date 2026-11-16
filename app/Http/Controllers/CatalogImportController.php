@@ -35,7 +35,8 @@ class CatalogImportController extends Controller {
   Gate::authorize('manage-library');$r->validate(['revision'=>'required|integer']);
   return $drafts->access($r,$kind,$token,function(&$draft)use($r,$kind,$token,$row,$imports){
    abort_unless($draft['status']==='pending' && isset($draft['rows'][$row]),404);abort_unless((int)$r->input('revision')===$draft['revision'],409,'This preview changed. Reload before editing.');
-   $rules=$kind==='books'?(new \App\Http\Requests\BookRequest)->rules():['title_bn'=>'required|string|max:255','title_en'=>'nullable|string|max:255'];unset($rules['cover'],$rules['remove_cover']);$data=$r->validate($rules);
+   $rules=$kind==='books'?(new \App\Http\Requests\BookRequest)->rules():['title_bn'=>'required|string|max:255','title_en'=>'nullable|string|max:255'];unset($rules['cover'],$rules['remove_cover'],$rules['pdf'],$rules['format']);$data=$r->validate($rules);
+   if ($kind === 'books') app(\App\Services\Library\CopyAccessions::class)->validate($data);
    foreach(['author_ids','category_ids'] as $field)if(isset($data[$field]))$data[$field]=array_map('intval',$data[$field]);
    $draft['rows'][$row]=$data;$draft['revision']++;return redirect()->route('catalog-import.preview',[$kind,$token])->with('success',"Row $row updated. Review all rows before confirming.");
   });

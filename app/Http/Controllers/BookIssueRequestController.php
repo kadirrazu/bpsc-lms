@@ -23,6 +23,7 @@ class BookIssueRequestController extends Controller {
   $pattern='%'.str_replace(['!','%','_'],['!!','!%','!_'],$search).'%';
   $query->whereHas('book',function($book)use($pattern){$book->where(function($b)use($pattern){
    foreach(['title_bn','title_en','accession_number','call_number'] as $field)$b->orWhereRaw("$field LIKE ? ESCAPE '!'",[$pattern]);
+   $b->orWhereHas('copies',fn($copies)=>$copies->where('is_active',true)->whereRaw("accession_number LIKE ? ESCAPE '!'",[$pattern]));
    foreach(['authors','publisher','categories'] as $relation)$b->orWhereHas($relation,fn($entry)=>$entry->where(fn($names)=>$names->whereRaw("title_bn LIKE ? ESCAPE '!'",[$pattern])->orWhereRaw("title_en LIKE ? ESCAPE '!'",[$pattern])));
   });});
  }
@@ -30,6 +31,7 @@ class BookIssueRequestController extends Controller {
   Gate::authorize('member-portal');
   DB::transaction(function()use($r,$book){
    $current=Book::whereKey($book->id)->lockForUpdate()->firstOrFail();
+   if ($current->isSoftCopy()) throw ValidationException::withMessages(['request' => 'Soft copies are available for download.']);
    $borrower=User::whereKey($r->user()->id)->lockForUpdate()->firstOrFail();
    $active=(int)BookLoan::where('user_id',$borrower->id)->whereNull('returned_at')->distinct()->count('book_id');
    $pending=BookIssueRequest::where('user_id',$borrower->id)->where('status','pending')->count();
@@ -69,6 +71,7 @@ class BookIssueRequestController extends Controller {
    $pattern='%'.str_replace(['!','%','_'],['!!','!%','!_'],$search).'%';
    $query->where(function($q)use($pattern){
     $q->whereHas('book',function($book)use($pattern){$book->where(function($b)use($pattern){foreach(['title_bn','title_en','accession_number','call_number'] as $field)$b->orWhereRaw("$field LIKE ? ESCAPE '!'",[$pattern]);});})
+      ->orWhereHas('loan',fn($loan)=>$loan->whereRaw("accession_snapshot LIKE ? ESCAPE '!'",[$pattern]))
       ->orWhereHas('user',function($user)use($pattern){$user->where(function($u)use($pattern){
        foreach(['name','email','mobile_number','unit'] as $field)$u->orWhereRaw("$field LIKE ? ESCAPE '!'",[$pattern]);
        $u->orWhereHas('designation',fn($d)=>$d->whereRaw("name LIKE ? ESCAPE '!'",[$pattern]));
@@ -80,10 +83,10 @@ class BookIssueRequestController extends Controller {
   return view('library.issue-requests',compact('requests','search','status'));
  }
  public function review(Request $r,BookIssueRequest $issueRequest){
-  Gate::authorize('manage-library');$data=$r->validate(['decision'=>'required|in:approve,reject']);
+  Gate::authorize('manage-library');$data=$r->validate(['decision'=>'required|in:approve,reject','copy_accession'=>'nullable|string|max:100']);
   if($data['decision']==='approve'){
-   $loan=app(\App\Services\Library\LoanIssuance::class)->issue($r->user(),[(int)$issueRequest->book_id],(int)$issueRequest->user_id,$issueRequest->id)->first();
-   return redirect()->route('issue-requests.index')->with('success','Book issued. Due: '.\App\Support\Ui::date($loan->due_at));
+   $loan=app(\App\Services\Library\LoanIssuance::class)->issue($r->user(),[(int)$issueRequest->book_id],(int)$issueRequest->user_id,$issueRequest->id, [$issueRequest->book_id => $data['copy_accession'] ?? null])->first();
+   return redirect()->route('issue-requests.index')->with('success','Book issued. Accession: '.$loan->accession_snapshot.'. Due: '.\App\Support\Ui::date($loan->due_at));
   }
   DB::transaction(function()use($r,$issueRequest){
    Book::whereKey($issueRequest->book_id)->lockForUpdate()->first();

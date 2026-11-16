@@ -29,7 +29,7 @@
                                 @else
                                     <span class="bn-text fw-semibold">{{ $title }}</span>
                                 @endif
-                                <div class="text-secondary small">{{ $loan->book?->accession_number ?? $loan->accession_snapshot }}</div>
+                                <div class="text-secondary small">{{ $loan->accession_snapshot ?? $loan->book?->accession_number }}</div>
                             </td>
                             <td class="text-center">{{ $loan->quantity }}</td>
                             <td>{{ \App\Support\Ui::date($loan->due_at) }}</td>

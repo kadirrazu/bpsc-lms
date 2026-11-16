@@ -3,7 +3,7 @@
 .loan-desk-search { display: grid; align-content: start; gap: 1.15rem; }
 .loan-desk-search .picker-status:empty { display: none; }
 .loan-desk-selection { background: #f4f7fc; border-inline-start: 1px solid #e3eaf4; }
-.loan-desk-book { display: flex; align-items: center; justify-content: space-between; gap: .85rem; padding: .65rem .75rem; margin-top: .65rem; background: #fff; border: 1px solid #e3eaf4; border-radius: .65rem; overflow-wrap: anywhere; }
+.loan-desk-book { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr) auto; align-items: start; gap: .65rem; padding: .65rem .75rem; margin-top: .65rem; background: #fff; border: 1px solid #e3eaf4; border-radius: .65rem; overflow-wrap: anywhere; }
 [data-loan-feedback]:empty { display: none; }
 [data-loan-feedback]:not(:empty) { margin-top: .85rem; }
 .loan-desk-book .btn { flex-shrink: 0; }
@@ -14,3 +14,5 @@
 }
 .circulation-dialog::backdrop { background: rgba(15, 29, 52, .55); }
 .circulation-dialog [data-confirm-books] { max-height: 35vh; overflow-y: auto; overflow-wrap: anywhere; }
+
+.loan-desk-serial { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 50%; background: #e9f0fd; font-weight: 600; }

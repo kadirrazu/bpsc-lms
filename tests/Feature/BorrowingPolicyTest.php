@@ -70,7 +70,7 @@ class BorrowingPolicyTest extends TestCase {
   BookLoan::create(['book_id'=>$second->id,'user_id'=>$this->member()->id,'issued_at'=>now()]);
   BookLoan::create(['book_id'=>$first->id,'user_id'=>$this->member()->id,'issued_at'=>now()]);
   $this->getJson(route('loans.options','books'))->assertExactJson(['results'=>[
-   ['id'=>$first->id,'label'=>$first->title_bn.' — '.$first->accession_number,'available_copies'=>4],
+   ['id'=>$first->id,'label'=>$first->title_bn.' - Author not recorded','title'=>$first->title_bn,'authors'=>'','available_copies'=>4],
   ]]);
   $this->get(route('loans.create',['book_id'=>$first->id]))->assertOk()->assertSee('Available: 4 · Issuing: 1');
   $this->postIssue(['member_id'=>$member->id,'book_ids'=>[$first->id,$second->id]])->assertSessionHasErrors('quantity');

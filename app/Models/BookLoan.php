@@ -9,6 +9,7 @@ class BookLoan extends Model {
  protected $attributes=['quantity'=>1];
  protected $fillable=['book_id','user_id','quantity','issued_at','returned_at'];
  protected function casts(): array {return ['quantity'=>'integer','issued_at'=>'datetime','returned_at'=>'datetime','due_at'=>'datetime','limit_override_at'=>'datetime','active_count_at_issue'=>'integer','authors_snapshot'=>'array','renewal_count'=>'integer','renewed_at'=>'datetime','is_fined'=>'boolean','fined_at'=>'datetime'];}
+ public ?string $requestedAccession = null;
  public function book(): BelongsTo {return $this->belongsTo(Book::class)->withTrashed();}
  public function issuer(): BelongsTo {return $this->belongsTo(User::class,'issued_by')->withTrashed();}
  public function reminder(){return $this->hasOne(LoanReminder::class,'loan_id');}
@@ -20,12 +21,30 @@ class BookLoan extends Model {
    // All circulation writers lock book before borrower; the borrower lock serializes different books too.
    $book=($this->exists && $this->returned_at ? Book::withTrashed():Book::query())->whereKey($this->book_id)->lockForUpdate()->first();
    if(!$book)throw ValidationException::withMessages(['book_id'=>'This book is no longer available.']);
+   if ($book->isSoftCopy()) {
+    throw ValidationException::withMessages(['loan'=>'Soft copies are downloaded, not issued.']);
+   }
    $newBorrowing = !$this->exists || $this->isDirty(['user_id','quantity']);
    if($newBorrowing && !in_array($this->getAttributes()['quantity'] ?? null, [1, '1'], true)){
     throw ValidationException::withMessages(['quantity'=>'Each loan must issue exactly one copy of a book.']);
    }
    if(!$this->exists){
-    $this->accession_snapshot=$book->accession_number;$this->title_snapshot=$book->title_bn;$this->title_en_snapshot=$book->title_en;$this->attributes['authors_snapshot']=json_encode($book->authors()->pluck('title_bn')->all(),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+    $registered = $book->copies()->where('is_active', true);
+    $fullyRegistered = $registered->count() === $book->number_of_copies;
+    if ($this->requestedAccession === null && $fullyRegistered && ! $this->returned_at
+     && $book->loans()->whereNull('returned_at')->whereNull('book_copy_id')->exists()) {
+     throw ValidationException::withMessages(['loan' => 'Enter the accession on the physical copy being issued. An older open loan has no copy recorded.']);
+    }
+    $copy = $this->requestedAccession !== null || $fullyRegistered
+     ? $book->availableCopies()
+      ->when($this->requestedAccession !== null, fn ($query) => $query->where('accession_number', $this->requestedAccession))
+      ->orderBy('id')->first()
+     : null;
+    if ($this->requestedAccession !== null && ! $copy) {
+     throw ValidationException::withMessages(['loan' => "Copy {$this->requestedAccession} is not available for this title."]);
+    }
+    $this->book_copy_id = $copy?->id;
+    $this->accession_snapshot = $copy?->accession_number ?? $book->accession_number;$this->title_snapshot=$book->title_bn;$this->title_en_snapshot=$book->title_en;$this->attributes['authors_snapshot']=json_encode($book->authors()->pluck('title_bn')->all(),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
     if($this->issued_by)$this->issuer_name=User::withTrashed()->find($this->issued_by)?->name;
    }
    if(!$this->exists || $this->isDirty('issued_at')){

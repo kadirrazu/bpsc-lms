@@ -13,15 +13,15 @@ use Illuminate\Validation\ValidationException;
 
 class LoanIssuance
 {
-    /** @param list<int> $bookIds */
-    public function issue(User $operator, array $bookIds, int $memberId, ?int $requestId = null): Collection
+    /** @param list<int> $bookIds @param array<int,string|null> $copyAccessions */
+    public function issue(User $operator, array $bookIds, int $memberId, ?int $requestId = null, array $copyAccessions = []): Collection
     {
         $limit = app(BorrowingPolicy::class)->limit();
         if (count($bookIds) < 1 || count($bookIds) > $limit || count(array_unique($bookIds)) !== count($bookIds)) {
             throw ValidationException::withMessages(['book_ids' => "Select between 1 and $limit different books."]);
         }
 
-        return DB::transaction(function () use ($operator, $bookIds, $memberId, $requestId, $limit) {
+        return DB::transaction(function () use ($operator, $bookIds, $memberId, $requestId, $limit, $copyAccessions) {
             // Lock books in a consistent order before locking requests and the member.
             $books = Book::whereKey($bookIds)->orderBy('id')->lockForUpdate()->get();
             if ($books->count() !== count($bookIds)) {
@@ -50,6 +50,9 @@ class LoanIssuance
             }
 
             foreach ($books as $book) {
+                if ($book->isSoftCopy()) {
+                    throw ValidationException::withMessages(['loan' => 'Soft copies are available for download.']);
+                }
                 if ($book->activeLoanQuantity() >= $book->number_of_copies) {
                     throw ValidationException::withMessages(['quantity' => "No copies are available for accession {$book->accession_number}."]);
                 }
@@ -63,6 +66,7 @@ class LoanIssuance
             foreach ($books as $book) {
                 $loan = new BookLoan(['book_id' => $book->id, 'user_id' => $memberId, 'issued_at' => $issuedAt]);
                 $loan->issued_by = $operator->id;
+                $loan->requestedAccession = $copyAccessions[$book->id] ?? null;
                 $loan->save();
                 $loans->push($loan);
 

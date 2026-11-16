@@ -1,7 +1,7 @@
 <?php
 namespace Tests\Feature;
 use App\Enums\UserRole;
-use App\Models\{Author,Publisher,Category,Book,BookLoan,User};
+use App\Models\{Author,Publisher,Category,Book,BookIssueRequest,BookLoan,User};
 use App\Services\Library\{BookSearch,DashboardOverview};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -26,7 +26,7 @@ class DashboardAndSearchTest extends TestCase
     }
     private function payload(Book $book): array
     {
-        return ['accession_number'=>$book->accession_number,'title_bn'=>$book->title_bn,'title_en'=>$book->title_en,'publisher_id'=>$book->publisher_id,'author_ids'=>$book->authors->modelKeys(),'category_ids'=>$book->categories->modelKeys(),'call_number'=>$book->call_number,'number_of_copies'=>$book->number_of_copies];
+        return ['accession_number'=>$book->accession_number,'title_bn'=>$book->title_bn,'title_en'=>$book->title_en,'publisher_id'=>$book->publisher_id,'author_ids'=>$book->authors->modelKeys(),'category_ids'=>$book->categories->modelKeys(),'call_number'=>$book->call_number,'number_of_copies'=>$book->number_of_copies,'additional_accessions'=>$book->accession_number.'-2'."\n".$book->accession_number.'-3'];
     }
     public function test_default_categories_are_seeded_once_without_overwriting_edits(): void
     {
@@ -49,6 +49,30 @@ class DashboardAndSearchTest extends TestCase
             ->assertViewHas('recentBooks',fn($rows)=>$rows->count()===5 && $rows->first()->id===$books[6]->id)
             ->assertViewHas('recentIssues',fn($rows)=>$rows->count()===5 && $rows->first()->id===$loans[5]->id);
     }
+    public function test_dashboard_shows_a_link_only_while_book_issue_requests_are_pending(): void
+    {
+        $this->login(UserRole::Staff);
+        $this->get('/dashboard')->assertOk()->assertDontSee('Pending Book Issue Requests');
+        $book = $this->book(1);
+        $member = User::factory()->create(['role' => UserRole::Member]);
+        $request = BookIssueRequest::create(['book_id' => $book->id, 'user_id' => $member->id]);
+        BookIssueRequest::create(['book_id' => $book->id, 'user_id' => $member->id, 'status' => 'withdrawn']);
+        $url = route('issue-requests.index', ['status' => 'pending']);
+
+        foreach ([UserRole::Staff, UserRole::Librarian, UserRole::Admin] as $role) {
+            $this->login($role);
+            $this->get('/dashboard')->assertOk()->assertViewHas('pendingIssues', 1)
+                ->assertSeeInOrder(['Welcome back', 'Pending Book Issue Requests', 'Total Books'])
+                ->assertSee('href="'.$url.'"', false)->assertDontSee('Pending Member Registrations');
+        }
+
+        $request->update(['status' => 'rejected']);
+        $this->get('/dashboard')->assertOk()->assertDontSee('Pending Book Issue Requests')
+            ->assertDontSee('aria-label="Pending requests"', false);
+        $this->login(UserRole::Member);
+        $this->get('/dashboard')->assertRedirect(route('member.home'));
+    }
+
     public function test_dashboard_cloud_links_drill_down_to_book_lists(): void
     {
         $this->login();$book=$this->book(1);$author=$book->authors->first();$category=$book->categories->first();

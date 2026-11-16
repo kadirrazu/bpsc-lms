@@ -1,9 +1,31 @@
 @extends('layouts.app')
 @section('title','Dashboard')
+@push('styles')
+<link rel="stylesheet" href="{{ asset('css/dashboard-requests.css') }}?v={{ config('library.version') }}">
+@endpush
 @section('content')
 
 <section class="card welcome-card mb-4"><div class="card-body"><div class="d-flex align-items-center gap-3"><span class="welcome-icon"><i class="bi bi-book-half"></i></span><div><span class="eyebrow mb-1">YOUR LIBRARY AT A GLANCE</span><h1>Welcome back, {{ auth()->user()->name }}.</h1><p class="text-secondary mb-0">Explore the library catalog and access the services available to you.</p></div></div><span class="welcome-date"><i class="bi bi-calendar3 me-2"></i>{{ now()->format('d M Y') }}</span></div></section>
-@can('manage-users')<a class="card card-body mb-3 text-decoration-none" href="{{ route('users.registrations') }}"><strong>Pending Member Registrations: {{ \App\Models\MemberRegistration::where('status','pending')->count() }}</strong><span class="text-secondary small">Review registration requests</span></a>@endcan
+@if ($pendingIssues || $pendingRegistrations)
+    <section class="row g-3 mb-4" aria-label="Pending requests">
+        @foreach ([
+            ['count' => $pendingIssues, 'kind' => 'issues', 'title' => 'Pending Book Issue Requests',
+                'icon' => 'bi-journal-arrow-up', 'url' => route('issue-requests.index', ['status' => 'pending'])],
+            ['count' => $pendingRegistrations, 'kind' => 'registrations', 'title' => 'Pending Member Registrations',
+                'icon' => 'bi-person-plus', 'url' => route('users.registrations')],
+        ] as $requestCard)
+            @continue($requestCard['count'] === 0)
+            <div class="col-12 col-md-6">
+                <a class="dashboard-request dashboard-request--{{ $requestCard['kind'] }} h-100 text-decoration-none" href="{{ $requestCard['url'] }}">
+                    <span class="dashboard-request-icon"><i class="bi {{ $requestCard['icon'] }}" aria-hidden="true"></i></span>
+                    <span class="dashboard-request-title">{{ $requestCard['title'] }}</span>
+                    <span class="dashboard-request-count">{{ number_format($requestCard['count']) }}</span>
+                    <i class="bi bi-arrow-right dashboard-request-arrow" aria-hidden="true"></i>
+                </a>
+            </div>
+        @endforeach
+    </section>
+@endif
 <div class="row g-3 mb-4">
 @foreach(['books'=>['Total Books','bi-journals','indigo'],'copies'=>['Total Copies','bi-stack','teal'],'issued'=>['Copies Issued','bi-box-arrow-up-right','amber'],'users'=>['Total Users','bi-people','purple']] as $key=>$card)
 <div class="col-6 col-xl-3"><div class="card overview-card"><div class="card-body"><div class="d-flex justify-content-between gap-2"><span class="overview-label">{{ $card[0] }}</span><span class="overview-icon {{ $card[2] }}"><i class="bi {{ $card[1] }}"></i></span></div><strong class="overview-number">{{ number_format($stats[$key]) }}</strong><span class="overview-caption">{{ $key==='books' ? 'Active catalog records':($key==='copies' ? 'Copies in the collection':($key==='issued' ? 'Currently on loan':number_format($stats['members']).' library members')) }}</span></div></div></div>
