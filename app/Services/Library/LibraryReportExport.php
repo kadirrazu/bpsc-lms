@@ -4,12 +4,7 @@ namespace App\Services\Library;
 
 use App\Models\Category;
 use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Facades\File;
-use Mpdf\Config\ConfigVariables;
-use Mpdf\Config\FontVariables;
 use Mpdf\HTMLParserMode;
-use Mpdf\Language\LanguageToFont;
-use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -70,30 +65,7 @@ class LibraryReportExport
 
     private function pdf(array $data): string
     {
-        $temp = storage_path('app/private/mpdf');
-        File::ensureDirectoryExists($temp, 0700);
-        $pdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => 'A4', 'orientation' => 'L',
-            'margin_top' => 20, 'margin_bottom' => 17, 'margin_left' => 10, 'margin_right' => 10,
-            'tempDir' => $temp,
-            'fontDir' => [...(new ConfigVariables)->getDefaults()['fontDir'], public_path('fonts')],
-            'fontdata' => (new FontVariables)->getDefaults()['fontdata'] + [
-                'nikosh' => ['R' => 'Nikosh.ttf', 'useOTL' => 0xFF],
-            ],
-            'autoScriptToLang' => true, 'autoLangToFont' => true,
-            'languageToFont' => new class extends LanguageToFont
-            {
-                public function getLanguageOptions($llcc, $adobeCJK)
-                {
-                    if (str_starts_with((string) $llcc, 'bn')) {
-                        return [false, 'nikosh'];
-                    }
-
-                    return parent::getLanguageOptions($llcc, $adobeCJK);
-                }
-            },
-            'default_font' => 'dejavusans', 'default_font_size' => 9,
-        ]);
+        $pdf = app(LibraryPdf::class)->make();
         $pdf->SetTitle($data['title']);
         $pdf->SetAuthor('Bangladesh Public Service Commission');
         $pdf->SetHTMLHeader('<div style="color:#334e78;font-size:9pt;border-bottom:1px solid #aab8ce">Bangladesh Public Service Commission (BPSC) | Library Management System</div>');

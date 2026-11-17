@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Rules\UniqueAccountEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class StaffProfileController extends Controller
@@ -19,7 +19,7 @@ class StaffProfileController extends Controller
         $user = $request->user();
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'email' => ['required', 'email', 'max:255', new UniqueAccountEmail($user->id)],
             'designation_id' => 'missing',
             'unit' => 'missing',
             'role' => 'missing',

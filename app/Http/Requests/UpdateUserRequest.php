@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\UniqueAccountEmail;
 use App\Enums\UserRole;
 use App\Services\Library\Catalog;
 use Illuminate\Foundation\Http\FormRequest;
@@ -31,7 +32,7 @@ class UpdateUserRequest extends FormRequest
                 'required',
                 'email',
                 'max:255',
-                Rule::unique('users', 'email')->ignore($user),
+                new UniqueAccountEmail($user->id),
             ],
 
             'designation_id' => [

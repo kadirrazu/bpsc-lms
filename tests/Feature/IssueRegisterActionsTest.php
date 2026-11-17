@@ -13,9 +13,9 @@ class IssueRegisterActionsTest extends TestCase {
  private function member(): User {return User::factory()->create(['role'=>UserRole::Member]);}
  private function operator(UserRole $role=UserRole::Librarian): User {return User::factory()->create(['role'=>$role]);}
  private function book(): Book {
-  $publisher=Publisher::firstOrCreate(['title_bn'=>'প্রকাশক']);$book=Book::create(['accession_number'=>'REG-'.(Book::withTrashed()->count()+1),'title_bn'=>'পুরনো শিরোনাম','publisher_id'=>$publisher->id,'call_number'=>'800','number_of_copies'=>2]);$author=Author::firstOrCreate(['title_bn'=>'প্রথম লেখক']);$book->authors()->attach($author);return $book;
+  $publisher=Publisher::firstOrCreate(['title_bn'=>'প্রকাশক']);$book=Book::create(['accession_number'=>'REG-'.(Book::withTrashed()->count()+1),'title_bn'=>'পুরনো শিরোনাম','publisher_id'=>$publisher->id,'call_number'=>'800','number_of_copies'=>2]);$author=Author::firstOrCreate(['title_bn'=>'প্রথম লেখক']);$book->authors()->attach($author);$book->copies()->create(['accession_number'=>$book->accession_number,'is_active'=>true]);return $book;
  }
- private function issue(User $member): BookLoan {$book=$this->book();$this->post(route('loans.store'),['member_id'=>$member->id,'book_id'=>$book->id,'confirmed'=>true])->assertRedirect();return BookLoan::latest('id')->firstOrFail();}
+ private function issue(User $member): BookLoan {$book=$this->book();$this->post(route('loans.store'),['member_id'=>$member->id,'book_id'=>$book->id,'confirmed'=>true,'copy_accessions'=>[$book->id=>$book->accession_number]])->assertRedirect()->assertSessionHasNoErrors();return BookLoan::latest('id')->firstOrFail();}
  private function action(BookLoan $loan,string $action,array $data=[]){return $this->post(route('issue-register.action',['loan'=>$loan->id,'action'=>$action]),array_merge(['confirmed'=>true],$data));}
  public function test_direct_issue_requires_confirmation_and_book_details_offer_prefilled_issue_link(): void {
   $operator=$this->operator(UserRole::Staff);$this->login($operator);$member=$this->member();$book=$this->book();

@@ -4,6 +4,9 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\UserRole;
+use App\Services\Library\MembershipNumbers;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Support\Facades\DB;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -52,6 +55,27 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'auth_version' => 'integer',
         ];
+    }
+
+    protected function email(): Attribute
+    {
+        return Attribute::make(set: fn (string $email) => mb_strtolower(trim($email)));
+    }
+
+    public function save(array $options = []): bool
+    {
+        if ($this->role !== UserRole::Member || $this->getRawOriginal('membership_number')) {
+            return parent::save($options);
+        }
+
+        return DB::transaction(function () use ($options) {
+            $existing = $this->exists
+                ? self::withTrashed()->whereKey($this->id)->lockForUpdate()->value('membership_number')
+                : null;
+            $this->membership_number = $existing ?? app(MembershipNumbers::class)->next();
+
+            return parent::save($options);
+        });
     }
 
     protected static function booted(): void

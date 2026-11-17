@@ -2,6 +2,12 @@
 @section('title','My Profile')
 @section('content')
 <div class="mb-4"><span class="eyebrow">MY ACCOUNT</span><h1>My Profile</h1><p class="text-secondary mb-0">Update your name and sign-in email. Your designation, unit and role are managed by an Administrator or Librarian.</p></div>
+@can('member-portal')
+    <div class="d-flex align-items-center flex-wrap gap-3 mb-3">
+        <strong>Membership No. {{ $user->membership_number }}</strong>
+        <a class="btn btn-outline-primary" href="{{ route('member.library-card') }}">Download Library Card</a>
+    </div>
+@endcan
 <form class="card card-body" method="post" action="{{ route('staff-profile.update') }}">
 @csrf @method('PUT')
 <div class="row g-4">

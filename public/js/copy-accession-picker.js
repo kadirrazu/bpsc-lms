@@ -13,6 +13,7 @@
         if (root.hasAttribute('data-copy-inline')) options.classList.add('position-static');
         hint.id = `${root.id}-hint`;
         search.setAttribute('aria-controls', options.id);
+        if (root.hasAttribute('data-copy-required')) fragment.querySelector('[data-copy-search-label]').classList.add('required');
         search.setAttribute('aria-describedby', hint.id);
         fragment.querySelector('[data-copy-search-label]').htmlFor = search.id;
         value.name = root.dataset.copyName;
@@ -20,6 +21,7 @@
 
         let accessions = null;
         let loading = false;
+        let registrationRequired = false;
         let matches = [];
         let highlighted = -1;
 
@@ -39,7 +41,7 @@
         }
 
         function display() {
-            if (accessions === null || search.disabled) return;
+            if (accessions === null || search.disabled || registrationRequired) return;
             const term = value.value ? '' : search.value.trim().toLowerCase();
             matches = accessions.filter(number => number.toLowerCase().includes(term));
             close();
@@ -68,6 +70,12 @@
                 if (!response.ok) throw new Error('Copy lookup failed');
                 const result = await response.json();
                 accessions = result.accessions;
+                if (result.legacyStock && root.hasAttribute('data-copy-required')) {
+                    registrationRequired = true;
+                    search.placeholder = 'No registered copies available';
+                    hint.textContent = 'Register the physical copy on Edit Book before issuing it.';
+                    return;
+                }
                 if (result.legacyStock) {
                     search.required = false;
                     search.disabled = true;

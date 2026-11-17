@@ -7,9 +7,12 @@ use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 class BorrowingPolicyTest extends TestCase {
  use RefreshDatabase;
- private function postIssue(array $data){return $this->post(route('loans.store'),array_merge(['confirmed'=>true],$data));}
+ private function postIssue(array $data){
+  $bookIds = $data['book_ids'] ?? [$data['book_id'] ?? null];
+  $data['copy_accessions'] ??= Book::whereKey($bookIds)->pluck('accession_number','id')->all();
+  return $this->post(route('loans.store'),array_merge(['confirmed'=>true],$data));}
  private function login(User $u): void {$this->actingAs($u)->withSession(['auth_version'=>$u->auth_version]);}
- private function book(): Book {$p=Publisher::firstOrCreate(['title_bn'=>'প্রকাশক']);return Book::create(['accession_number'=>'POL-'.(Book::withTrashed()->count()+1),'title_bn'=>'বই','publisher_id'=>$p->id,'call_number'=>'800','number_of_copies'=>5]);}
+ private function book(): Book {$p=Publisher::firstOrCreate(['title_bn'=>'প্রকাশক']);$book=Book::create(['accession_number'=>'POL-'.(Book::withTrashed()->count()+1),'title_bn'=>'বই','publisher_id'=>$p->id,'call_number'=>'800','number_of_copies'=>5]);$book->copies()->create(['accession_number'=>$book->accession_number,'is_active'=>true]);return $book;}
  private function loan(User $member): BookLoan {return BookLoan::create(['book_id'=>$this->book()->id,'user_id'=>$member->id,'quantity'=>1,'issued_at'=>now()]);}
  private function member(): User {return User::factory()->create(['role'=>UserRole::Member]);}
  private function operator(UserRole $role=UserRole::Librarian): User {return User::factory()->create(['role'=>$role]);}
@@ -98,7 +101,7 @@ class BorrowingPolicyTest extends TestCase {
   $unit=Unit::where('name','Unit 01')->firstOrFail();
   $member->update(['designation_id'=>$designation->id,'unit'=>$unit->code]);
   $this->getJson(route('loans.options',['kind'=>'members','q'=>$member->email]))->assertOk()
-   ->assertExactJson(['results'=>[['id'=>$member->id,'label'=>$member->name.' - Assistant Director - Unit 01']]]);
+   ->assertExactJson(['results'=>[['id'=>$member->id,'label'=>$member->name.' - Assistant Director - Unit 01 - #'.$member->membership_number]]]);
   $this->postIssue(['member_id'=>$member->id,'book_id'=>$book->id,'due_at'=>now()->addYear()->toDateTimeString()])->assertRedirect();
   $loan=BookLoan::firstOrFail();$this->assertTrue($loan->due_at->equalTo($loan->issued_at->copy()->addDays(15)));$this->assertDatabaseHas('book_issue_requests',['loan_id'=>$loan->id,'source'=>'staff_issue','status'=>'approved']);
  }

@@ -50,7 +50,7 @@ class LoanController extends Controller
         $loans = $issuer->issue($request->user(), $ids, (int) $data['member_id'], copyAccessions: $data['copy_accessions'] ?? []);
         $message = $loans->count() === 1 ? 'Book issued.' : $loans->count().' books issued.';
 
-        return redirect()->route('issue-requests.index')->with('success', $message.' Accession: '.$loans->pluck('accession_snapshot')->implode(', ').'. Due: '.Ui::date($loans->first()->due_at));
+        return redirect()->route('issue-requests.index')->with('issue_receipt_loan', $loans->first()->id)->with('success', $message.' Accession: '.$loans->pluck('accession_snapshot')->implode(', ').'. Due: '.Ui::date($loans->first()->due_at));
     }
 
     public function options(Request $request, string $kind)
@@ -70,7 +70,8 @@ class LoanController extends Controller
                 ->when($term !== '', fn ($query) => $query->where(fn ($user) => $user
                     ->whereRaw("name LIKE ? ESCAPE '!'", [$pattern])
                     ->orWhereRaw("email LIKE ? ESCAPE '!'", [$pattern])
-                    ->orWhereRaw("mobile_number LIKE ? ESCAPE '!'", [$pattern])))
+                    ->orWhereRaw("mobile_number LIKE ? ESCAPE '!'", [$pattern])
+                    ->orWhereRaw("membership_number LIKE ? ESCAPE '!'", [$pattern])))
                 ->orderBy('name')->orderBy('id')->limit(20)->get()
                 ->map(fn ($user) => ['id' => $user->id, 'label' => $this->memberLabel($user)]);
         } else {
@@ -134,6 +135,6 @@ class LoanController extends Controller
 
     private function memberLabel(User $user): string
     {
-        return implode(' - ', [$user->name, $user->designation?->name ?? 'Not assigned', Ui::unit($user->unit)]);
+        return implode(' - ', [$user->name, $user->designation?->name ?? 'Not assigned', Ui::unit($user->unit), '#'.$user->membership_number]);
     }
 }

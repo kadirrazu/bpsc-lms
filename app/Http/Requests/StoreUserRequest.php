@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\UniqueAccountEmail;
 use App\Enums\UserRole;
 use App\Services\Library\Catalog;
 use Illuminate\Foundation\Http\FormRequest;
@@ -29,7 +30,7 @@ class StoreUserRequest extends FormRequest
                 'required',
                 'email',
                 'max:255',
-                'unique:users,email',
+                new UniqueAccountEmail,
             ],
 
             'designation_id' => [

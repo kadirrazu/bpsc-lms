@@ -3,6 +3,24 @@
 @push('scripts')<script src="{{ asset('js/copy-accession-picker.js') }}?v={{ config('library.version') }}" defer></script>@endpush
 @section('content')
 @include('loans.copy-picker-template')
+@php
+    $issueReceiptAvailable = Route::has('loans.receipt');
+    $returnReceiptAvailable = Route::has('loans.return-receipt');
+@endphp
+@if ($issueReceiptAvailable && session('issue_receipt_loan'))
+    <div class="mb-3">
+        <a class="btn btn-outline-primary" href="{{ route('loans.receipt', session('issue_receipt_loan')) }}">
+            <i class="bi bi-printer me-1" aria-hidden="true"></i>Download Issue Receipt
+        </a>
+    </div>
+@endif
+@if ($returnReceiptAvailable && session('return_receipt_loan'))
+    <div class="mb-3">
+        <a class="btn btn-outline-primary" href="{{ route('loans.return-receipt', session('return_receipt_loan')) }}">
+            <i class="bi bi-printer me-1" aria-hidden="true"></i>Download Return Receipt
+        </a>
+    </div>
+@endif
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
     <div>
         <h1 class="mb-1">Book Issue Requests</h1>
@@ -39,6 +57,16 @@
             @csrf
             <button class="btn btn-sm btn-outline-primary">Mark Returned</button>
         </form>
+    @endif
+    @if ($entry->loan)
+        <div class="d-flex flex-wrap gap-2 mt-2">
+            @if ($issueReceiptAvailable)
+                <a class="btn btn-sm btn-outline-secondary text-nowrap" href="{{ route('loans.receipt', $entry->loan) }}">Issue Receipt</a>
+            @endif
+            @if ($returnReceiptAvailable && $entry->loan->returned_at)
+                <a class="btn btn-sm btn-outline-teal text-nowrap" href="{{ route('loans.return-receipt', $entry->loan) }}">Return Receipt</a>
+            @endif
+        </div>
     @endif
 </td></tr>@empty<tr><td colspan="5" class="py-4 text-center text-secondary">No matching requests. Try another search or clear the filters.</td></tr>@endforelse</tbody></table></div></div><div class="mt-4">@include('shared.pagination',['paginator'=>$requests])</div>
 @endsection

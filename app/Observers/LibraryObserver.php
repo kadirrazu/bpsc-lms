@@ -20,7 +20,7 @@ class LibraryObserver
         if ($m instanceof NamedCatalogEntry) return ['title_bn','title_en'];
         if ($m instanceof BookLoan) return ['book_id','user_id','quantity','issued_at','returned_at'];
         if ($m instanceof Unit) return ['code','name','sort_order','is_active'];
-        return $m instanceof User ? ['name','email','mobile_number','designation_id','unit','role','is_active','preferred_locale','deleted_at'] : ['name','slug','sort_order','is_active'];
+        return $m instanceof User ? ['name','email','mobile_number','designation_id','unit','role','is_active','membership_number','preferred_locale','deleted_at'] : ['name','slug','sort_order','is_active'];
     }
 
     private function invalidate(Model $m): void

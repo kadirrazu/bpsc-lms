@@ -15,6 +15,7 @@ Route::middleware('auth')->group(function () {
  Route::get('/dashboard',[\App\Http\Controllers\DashboardController::class,'index'])->name('dashboard');
  Route::middleware('can:member-portal')->group(function () {
   Route::get('/member',[\App\Http\Controllers\MemberHomeController::class,'index'])->name('member.home');
+  Route::get('/member/library-card', [\App\Http\Controllers\LibraryPrintController::class, 'memberCard'])->name('member.library-card');
   Route::get('/member/catalog',[\App\Http\Controllers\BookController::class,'catalog'])->name('member.catalog');
   Route::get('/member/catalog/{book}/download',[\App\Http\Controllers\BookController::class,'download'])->name('member.books.download');
   Route::get('/member/catalog/{book}',[\App\Http\Controllers\BookController::class,'memberShow'])->name('member.books.show');
@@ -32,6 +33,8 @@ Route::middleware('auth')->group(function () {
   Route::get('/loan-options/{kind}',[\App\Http\Controllers\LoanController::class,'options'])->whereIn('kind',['books','members'])->middleware('throttle:120,1')->name('loans.options');
  });
  Route::middleware('can:manage-library')->group(function(){
+  Route::get('/loans/{loan}/receipt', [\App\Http\Controllers\LibraryPrintController::class, 'issueReceipt'])->name('loans.receipt');
+  Route::get('/loans/{loan}/return-receipt', [\App\Http\Controllers\LibraryPrintController::class, 'returnReceipt'])->name('loans.return-receipt');
   Route::get('/issue-register',[\App\Http\Controllers\IssueRegisterController::class,'index'])->name('issue-register.index');
   Route::get('/issue-register/export',[\App\Http\Controllers\IssueRegisterController::class,'export'])->name('issue-register.export');
   Route::post('/loans/{loan}/{action}',[\App\Http\Controllers\IssueRegisterController::class,'action'])->whereIn('action',['reminder','renew','fine','clear-fine'])->name('issue-register.action');
@@ -70,6 +73,7 @@ Route::middleware('auth')->group(function () {
   Route::get('/users/registration-requests',[\App\Http\Controllers\MemberRegistrationController::class,'index'])->name('users.registrations');
   Route::post('/users/registration-requests/{registration}/approve',[\App\Http\Controllers\MemberRegistrationController::class,'approve'])->name('users.registrations.approve');
   Route::get('/users/{user}/delete-confirm', [UserController::class,'confirmDelete'])->middleware('can:delete-library')->name('users.confirm-delete');
+  Route::get('/users/{user}/library-card', [\App\Http\Controllers\LibraryPrintController::class, 'managedCard'])->name('users.library-card');
   Route::resource('users',UserController::class)->except('destroy');
   Route::delete('/users/{user}',[UserController::class,'destroy'])->middleware('can:delete-library')->name('users.destroy');
  });

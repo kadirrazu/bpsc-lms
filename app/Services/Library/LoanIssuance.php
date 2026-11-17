@@ -6,7 +6,9 @@ use App\Enums\UserRole;
 use App\Models\Book;
 use App\Models\BookIssueRequest;
 use App\Models\BookLoan;
+use App\Models\IssueReceipt;
 use App\Models\User;
+use App\Support\Ui;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -56,15 +58,29 @@ class LoanIssuance
                 if ($book->activeLoanQuantity() >= $book->number_of_copies) {
                     throw ValidationException::withMessages(['quantity' => "No copies are available for accession {$book->accession_number}."]);
                 }
+                if (! $request && blank($copyAccessions[$book->id] ?? null)) {
+                    throw ValidationException::withMessages(['copy_accessions' => "Select an available accession number for {$book->title_bn}."]);
+                }
                 if (! $request && BookIssueRequest::where('book_id', $book->id)->where('user_id', $memberId)->where('status', 'pending')->exists()) {
                     throw ValidationException::withMessages(['loan' => "Accession {$book->accession_number} already has a pending request. Approve it from Issue Requests."]);
                 }
             }
 
             $issuedAt = now();
+            $receipt = IssueReceipt::create([
+                'member_name' => $member->name,
+                'membership_number' => $member->membership_number,
+                'issued_at' => $issuedAt,
+                'member_designation' => $member->designation?->name ?? 'Not assigned',
+                'member_unit' => Ui::unit($member->unit),
+                'issuer_user_id' => $operator->id,
+                'issuer_name' => $operator->name,
+                'issuer_designation' => $operator->designation?->name ?? 'Not assigned',
+            ]);
             $loans = collect();
             foreach ($books as $book) {
                 $loan = new BookLoan(['book_id' => $book->id, 'user_id' => $memberId, 'issued_at' => $issuedAt]);
+                $loan->issue_receipt_id = $receipt->id;
                 $loan->issued_by = $operator->id;
                 $loan->requestedAccession = $copyAccessions[$book->id] ?? null;
                 $loan->save();

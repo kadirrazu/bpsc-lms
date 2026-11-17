@@ -86,7 +86,7 @@ class BookIssueRequestController extends Controller {
   Gate::authorize('manage-library');$data=$r->validate(['decision'=>'required|in:approve,reject','copy_accession'=>'nullable|string|max:100']);
   if($data['decision']==='approve'){
    $loan=app(\App\Services\Library\LoanIssuance::class)->issue($r->user(),[(int)$issueRequest->book_id],(int)$issueRequest->user_id,$issueRequest->id, [$issueRequest->book_id => $data['copy_accession'] ?? null])->first();
-   return redirect()->route('issue-requests.index')->with('success','Book issued. Accession: '.$loan->accession_snapshot.'. Due: '.\App\Support\Ui::date($loan->due_at));
+   return redirect()->route('issue-requests.index')->with('issue_receipt_loan', $loan->id)->with('success','Book issued. Accession: '.$loan->accession_snapshot.'. Due: '.\App\Support\Ui::date($loan->due_at));
   }
   DB::transaction(function()use($r,$issueRequest){
    Book::whereKey($issueRequest->book_id)->lockForUpdate()->first();
@@ -95,8 +95,26 @@ class BookIssueRequestController extends Controller {
    $entry->update(['status'=>'rejected','reviewed_by'=>$r->user()->id,'reviewed_at'=>now()]);app(Audit::class)->record('book.issue_request_rejected',[],$entry);
   });return back()->with('success','Issue request rejected.');
  }
- public function returned(BookLoan $loan){
+ public function returned(Request $request, BookLoan $loan)
+ {
   Gate::authorize('manage-library');
-  DB::transaction(function()use($loan){Book::whereKey($loan->book_id)->lockForUpdate()->firstOrFail();$current=BookLoan::whereKey($loan->id)->lockForUpdate()->firstOrFail();if($current->returned_at)throw ValidationException::withMessages(['loan'=>'This loan has already been returned.']);$current->update(['returned_at'=>now()]);});return back()->with('success','Book marked as returned.');
+
+  $operator = $request->user();
+  DB::transaction(function () use ($loan, $operator) {
+   Book::whereKey($loan->book_id)->lockForUpdate()->firstOrFail();
+   $current = BookLoan::whereKey($loan->id)->lockForUpdate()->firstOrFail();
+   if ($current->returned_at) {
+    throw ValidationException::withMessages(['loan' => 'This loan has already been returned.']);
+   }
+
+   $current->forceFill([
+    'returned_at' => now(),
+    'returned_by' => $operator->id,
+    'return_receiver_name' => $operator->name,
+    'return_receiver_designation' => $operator->designation?->name ?? 'Not assigned',
+   ])->save();
+  }, 3);
+
+  return back()->with('success', 'Book marked as returned.')->with('return_receipt_loan', $loan->id);
  }
 }

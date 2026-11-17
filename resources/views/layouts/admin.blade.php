@@ -17,15 +17,7 @@
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu" aria-controls="navbar-menu" aria-expanded="false" aria-label="{{ __('Toggle navigation') }}"><span class="navbar-toggler-icon"></span></button>
             <div class="navbar-nav flex-row order-md-last align-items-center gap-2 library-account">
                 
-                <div class="nav-item dropdown">
-                    <button type="button" class="nav-link dropdown-toggle border-0 bg-transparent" data-bs-toggle="dropdown" aria-expanded="false" aria-label="{{ __('User menu') }}"><span class="avatar avatar-sm">{{ mb_substr(auth()->user()->name,0,1) }}</span>@include('shared.account-name')</button>
-                    <div class="dropdown-menu dropdown-menu-end">
-                        <div class="px-3 py-2"><strong>{{ auth()->user()->name }}</strong><div class="small text-secondary">{{ auth()->user()->designation?->name ?? __('Not assigned') }}</div><div class="small text-secondary">{{ \App\Support\Ui::unit(auth()->user()->unit) }}</div></div><div class="dropdown-divider"></div>
-                        <a class="dropdown-item" href="{{ route('staff-profile.edit') }}"><i class="bi bi-person-circle" aria-hidden="true"></i>{{ __('My Profile') }}</a>
-                        <a class="dropdown-item" href="{{ route('staff-profile.password') }}"><i class="bi bi-key" aria-hidden="true"></i>{{ __('Change Password') }}</a>
-                        <form action="{{ route('logout') }}" method="post">@csrf<button type="submit" class="dropdown-item"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>{{ __('Sign out') }}</button></form>
-                    </div>
-                </div>
+                @include('shared.account-menu')
             </div>
             <div class="collapse navbar-collapse" id="navbar-menu"><ul class="navbar-nav gap-md-2">
 <li class="nav-item"><a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}"><i class="bi bi-grid-1x2"></i>Dashboard</a></li>

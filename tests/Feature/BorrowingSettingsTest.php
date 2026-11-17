@@ -9,7 +9,7 @@ use Tests\TestCase;
 class BorrowingSettingsTest extends TestCase {
  use RefreshDatabase;
  private function login(UserRole $role): User {$u=User::factory()->create(['role'=>$role]);$this->actingAs($u)->withSession(['auth_version'=>$u->auth_version]);return $u;}
- private function book(): Book {$p=Publisher::firstOrCreate(['title_bn'=>'প্রকাশক']);return Book::create(['accession_number'=>'SET-'.(Book::withTrashed()->count()+1),'title_bn'=>'বই','publisher_id'=>$p->id,'call_number'=>'800','number_of_copies'=>5]);}
+ private function book(): Book {$p=Publisher::firstOrCreate(['title_bn'=>'প্রকাশক']);$book=Book::create(['accession_number'=>'SET-'.(Book::withTrashed()->count()+1),'title_bn'=>'বই','publisher_id'=>$p->id,'call_number'=>'800','number_of_copies'=>5]);$book->copies()->create(['accession_number'=>$book->accession_number,'is_active'=>true]);return $book;}
  private function settings(int $limit,int $days,array $renewal=[]): void {$this->login(UserRole::Admin);$this->put(route('borrowing-settings.update'),['loan_limit'=>$limit,'loan_days'=>$days]+$renewal)->assertRedirect()->assertSessionHasNoErrors();}
  private function loan(User $member): BookLoan {return BookLoan::create(['book_id'=>$this->book()->id,'user_id'=>$member->id,'quantity'=>1,'issued_at'=>now()]);}
  public function test_administrator_and_librarian_can_read_and_update_settings(): void {
@@ -28,7 +28,7 @@ class BorrowingSettingsTest extends TestCase {
  public function test_dynamic_limit_and_period_apply_to_direct_issue_and_model_guard(): void {
   $this->freezeTime();$this->settings(1,21);$member=User::factory()->create(['role'=>UserRole::Member]);$this->login(UserRole::Staff);$book=$this->book();
   $this->get(route('loans.create'))->assertOk()->assertSee('Issue for 21 Days');
-  $this->post(route('loans.store'),['confirmed'=>true,'member_id'=>$member->id,'book_id'=>$book->id])->assertRedirect()->assertSessionHasNoErrors();$loan=BookLoan::firstOrFail();$this->assertTrue($loan->due_at->equalTo($loan->issued_at->copy()->addDays(21)));
+  $this->post(route('loans.store'),['confirmed'=>true,'member_id'=>$member->id,'book_id'=>$book->id,'copy_accessions'=>[$book->id=>$book->accession_number]])->assertRedirect()->assertSessionHasNoErrors();$loan=BookLoan::firstOrFail();$this->assertTrue($loan->due_at->equalTo($loan->issued_at->copy()->addDays(21)));
   $this->post(route('loans.store'),['confirmed'=>true,'member_id'=>$member->id,'book_id'=>$this->book()->id])->assertSessionHasErrors('loan');
   try{$this->loan($member);$this->fail('Expected dynamic borrowing limit.');}catch(ValidationException $e){$this->assertArrayHasKey('loan',$e->errors());}$this->assertDatabaseCount('book_loans',1);
  }
@@ -51,7 +51,7 @@ class BorrowingSettingsTest extends TestCase {
  }
  public function test_batch_uses_current_settings_and_counts_existing_different_books(): void {
   $member=User::factory()->create(['role'=>UserRole::Member]);$this->loan($member);
-  $books=[$this->book()->id,$this->book()->id];$data=['confirmed'=>true,'member_id'=>$member->id,'book_ids'=>$books];
+  $books=[$this->book()->id,$this->book()->id];$data=['confirmed'=>true,'member_id'=>$member->id,'book_ids'=>$books,'copy_accessions'=>Book::whereKey($books)->pluck('accession_number','id')->all()];
   $this->login(UserRole::Librarian);$this->post(route('loans.store'),$data)->assertSessionHasErrors('loan');
   $this->assertDatabaseCount('book_loans',1);
   $this->settings(3,21);$this->login(UserRole::Librarian);

@@ -35,7 +35,7 @@
     bookValue.addEventListener('change', event => {
         const id = bookValue.value;
         if (!id || !event.detail) return;
-        const {title, authors, available_copies: availableCopies, matched_accession: matchedAccession} = event.detail;
+        const {title, authors, available_copies: availableCopies} = event.detail;
         bookValue.value = '';
         bookInput.value = '';
 
@@ -66,7 +66,7 @@
         picker.id = `copy-picker-${id}`;
         picker.dataset.copyUrl = list.dataset.copyUrlTemplate.replace('BOOK_ID', id);
         picker.dataset.copyName = `copy_accessions[${id}]`;
-        picker.dataset.copySelected = matchedAccession ?? '';
+        picker.dataset.copyRequired = '';
         picker.dataset.copyEager = '';
         details.append(text, author, copies, picker);
         const value = document.createElement('input');

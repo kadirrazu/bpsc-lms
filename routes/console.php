@@ -36,7 +36,7 @@ Artisan::command('library:create-admin', function () {
     $selectedUnit = $this->output->askQuestion(new AdminChoiceQuestion('Department', array_values($unitLabels), $unitLabels['IT Section'] ?? reset($unitLabels)));
     $unit = array_search($selectedUnit, $unitLabels, true);
     $validator = Validator::make(['name' => $name, 'email' => $email, 'password' => $password, 'password_confirmation' => $confirm], [
-        'name' => 'required|string|max:255', 'email' => 'required|email|max:255|unique:users,email',
+        'name' => 'required|string|max:255', 'email' => ['required', 'email', 'max:255', new \App\Rules\UniqueAccountEmail],
         'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
     ]);
     if ($validator->fails()) {

@@ -20,7 +20,7 @@
     @csrf
     <div class="loan-desk-grid">
         <div class="loan-desk-search">
-            @foreach (['member' => ['Member', 'members', $member?->id, $memberLabel, 'Name, email or mobile number'], 'book' => ['Find a book', 'books', null, '', 'Title, author, accession or call number']] as $field => $picker)
+            @foreach (['member' => ['Member', 'members', $member?->id, $memberLabel, 'Name, email, mobile or membership no.'], 'book' => ['Find a book', 'books', null, '', 'Title, author, accession or call number']] as $field => $picker)
                 <div class="catalog-picker" data-catalog-picker data-url="{{ route('loans.options', $picker[1]) }}" data-loan-picker="{{ $field }}">
                     <label class="form-label" for="{{ $field }}-search">{{ $picker[0] }}</label>
                     <input type="hidden" @if($field === 'member') name="member_id" @endif value="{{ $picker[2] }}" data-picker-value>
@@ -34,7 +34,7 @@
                     <small class="form-hint picker-status" role="status" aria-live="polite"></small>
                 </div>
             @endforeach
-            <p class="text-secondary small mb-0">Each selected book adds one copy. A member can have up to {{ $borrowingPolicy->limit() }} different books on loan.</p>
+            <p class="text-secondary small mb-0">Select an accession number for each book you issue. A member can have up to {{ $borrowingPolicy->limit() }} different books on loan.</p>
         </div>
         <section class="loan-desk-selection" aria-labelledby="loan-selection-title">
             <div class="d-flex justify-content-between align-items-center gap-2">
@@ -52,7 +52,7 @@
                             <div class="small text-secondary mt-1" data-loan-copy-counts>
                                 Available: {{ max(0, $selected->number_of_copies - (int) $selected->active_copies) }} · Issuing: 1
                             </div>
-                            <div id="copy-picker-{{ $selected->id }}" data-copy-picker data-copy-eager
+                            <div id="copy-picker-{{ $selected->id }}" data-copy-picker data-copy-eager data-copy-required
                                 data-copy-url="{{ route('loans.copy-options', $selected) }}"
                                 data-copy-name="copy_accessions[{{ $selected->id }}]"
                                 data-copy-selected="{{ old('copy_accessions.'.$selected->id) }}"></div>

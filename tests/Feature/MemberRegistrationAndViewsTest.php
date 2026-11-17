@@ -30,14 +30,14 @@ class MemberRegistrationAndViewsTest extends TestCase {
  }
  public function test_duplicate_pending_and_existing_emails_are_rejected(): void {
   $data=$this->payload();$this->post('/register',$data)->assertRedirect();$this->post('/register',$data)->assertSessionHasErrors('email');
-  User::factory()->create(['email'=>'existing@example.com']);$this->post('/register',array_replace($data,['email'=>'existing@example.com']))->assertSessionHasErrors('email');
+  User::factory()->create(['email'=>'existing@example.com']);$this->post('/register',array_replace($data,['email'=>'Existing@EXAMPLE.COM']))->assertSessionHasErrors('email');
  }
  public function test_admin_can_approve_once_and_member_can_sign_in(): void {
   $data=$this->payload();$this->post('/register',$data);$admin=$this->login(UserRole::Admin);$entry=MemberRegistration::firstOrFail();
   $this->get('/dashboard')->assertOk()->assertViewHas('pendingRegistrations', 1)->assertSee('Pending Member Registrations');$this->get('/users/registration-requests')->assertOk()->assertSee($data['mobile_number']);
   $this->post(route('users.registrations.approve',$entry))->assertRedirect();
   $this->get('/dashboard')->assertOk()->assertDontSee('Pending Member Registrations');
-  $user=User::where('email',$data['email'])->firstOrFail();$this->assertSame(UserRole::Member,$user->role);$this->assertTrue($user->is_active);$this->assertTrue(Hash::check($data['password'],$user->password));$this->assertSame($data['mobile_number'],$user->mobile_number);
+  $user=User::where('email',$data['email'])->firstOrFail();$this->assertSame(UserRole::Member,$user->role);$this->assertMatchesRegularExpression('/^'.now()->format('y').'[0-9]{4}$/', $user->membership_number);$this->assertTrue($user->is_active);$this->assertTrue(Hash::check($data['password'],$user->password));$this->assertSame($data['mobile_number'],$user->mobile_number);
   $this->assertSame($admin->id,$entry->fresh()->reviewed_by);$this->assertNull($entry->fresh()->password);
   $this->post(route('users.registrations.approve',$entry))->assertSessionHasErrors('registration');
   $this->post('/logout');$this->post('/login',['email'=>$data['email'],'password'=>$data['password']])->assertSessionHasNoErrors();$this->assertAuthenticatedAs($user);$this->get('/member/catalog')->assertOk();
