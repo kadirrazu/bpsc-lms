@@ -61,10 +61,22 @@
         pending = {form, submitter: event.submitter};
         const book = `${form.dataset.book} (${form.dataset.accession})`;
         const member = action === 'issue' ? form.querySelector('#member-search').value : form.dataset.member;
+        const exceptional = issue && Boolean(form.querySelector('[data-exceptional-toggle]')?.checked);
+        const copyCount = issue ? form.querySelectorAll('[data-issued-copy]').length : 0;
+        const reason = form.querySelector('[data-exceptional-reason]')?.value.trim();
         const title = {issue: 'Review book issue', reminder: 'Send return reminder?', renew: 'Renew this loan?', fine: 'Flag this issue for fine?', 'clear-fine': 'Clear the fine flag?'}[action];
         const text = {issue: `${member}\n${books.length} book${books.length === 1 ? '' : 's'} · ${loanDays}-day loan`, reminder: `Send a book return reminder to ${member}’s dashboard?\n\nBook: ${book}`, renew: `Extend the loan for ${member} by ${loanDays} days from today?\n\nBook: ${book}\nCurrent due date: ${form.dataset.due ? new Date(form.dataset.due).toLocaleString() : 'Not recorded'}`, fine: `Flag this issue for separate fine reporting?\n\nBook: ${book}\nMember: ${member}`, 'clear-fine': `Clear the fine flag on this issue?\n\nBook: ${book}\nMember: ${member}`}[action];
-        dialog.querySelector('#circulation-confirm-title').textContent = title || 'Confirm action';
-        dialog.querySelector('#circulation-confirm-text').textContent = text || 'Continue?';
+        dialog.querySelector('#circulation-confirm-title').textContent = exceptional ? 'Review exceptional issue' : (title || 'Confirm action');
+        dialog.querySelector('#circulation-confirm-text').textContent = issue
+            ? `${member}
+Configured limit: ${form.dataset.bookLimit} books
+Currently on loan: ${form.dataset.onLoan || 0}
+Pending requests: ${form.dataset.pendingRequests || 0}
+Issuing now: ${books.length} titles · ${copyCount} copies
+Total after issue: ${Number(form.dataset.onLoan || 0) + copyCount} copies
+Loan period: ${loanDays} days${exceptional ? `
+Reason: ${reason}` : ''}`
+            : (text || 'Continue?');
         const list = dialog.querySelector('[data-confirm-books]');
         list.hidden = !issue;
         list.replaceChildren(...books.map(book => {
@@ -73,7 +85,7 @@
             const label = book.querySelector('[data-loan-book-label]');
             const copies = book.querySelector('[data-loan-copy-counts]');
             item.append(label.cloneNode(true), copies.cloneNode(true));
-            const accession = book.querySelector('[data-issued-copy]')?.value.trim();
+            const accession = [...book.querySelectorAll('[data-issued-copy]')].map(input => input.value.trim()).filter(Boolean).join(', ');
             if (accession) {
                 const selectedCopy = document.createElement('div');
                 selectedCopy.className = 'small text-secondary mt-1';
@@ -82,7 +94,7 @@
             }
             return item;
         }));
-        dialog.querySelector('button[value="confirm"]').textContent = issue ? 'Confirm Issue' : 'Confirm';
+        dialog.querySelector('button[value="confirm"]').textContent = exceptional ? 'Confirm Exceptional Issue' : (issue ? 'Confirm Issue' : 'Confirm');
         dialog.showModal();
         dialog.querySelector('button[value="cancel"]').focus();
     });

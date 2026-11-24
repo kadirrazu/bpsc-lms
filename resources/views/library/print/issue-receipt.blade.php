@@ -56,7 +56,7 @@
         @endforeach
         </tbody>
     </table>
-    <div class="totals"><strong>Books:</strong> {{ $loans->count() }} &nbsp; | &nbsp; <strong>Copies:</strong> {{ $loans->sum('quantity') }}</div>
+    <div class="totals"><strong>Books:</strong> {{ $loans->pluck('book_id')->unique()->count() }} &nbsp; | &nbsp; <strong>Copies:</strong> {{ $loans->sum('quantity') }}</div>
     <div class="operator">
         @if ($isReturn)
             Return Recorded By:
@@ -71,6 +71,9 @@
             <span class="operator-note">[On behalf of the library]</span>
         @endif
     </div>
+    @if ($loans->first()?->exceptional_reason)
+        <div class="operator"><strong>Exceptional Issue:</strong> {{ $loans->first()->exceptional_reason }}</div>
+    @endif
     <table class="signatures">
         @unless ($isReturn)
             <tr>

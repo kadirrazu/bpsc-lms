@@ -62,6 +62,14 @@
                 @endforeach
             </select>
         </div>
+        <div class="col-12 col-sm-6 col-lg-3">
+            <label class="form-label" for="register-type">Issue type</label>
+            <select class="form-select" name="issue_type" id="register-type">
+                <option value="">All issues</option>
+                <option value="normal" @selected(($filters['issue_type'] ?? '') === 'normal')>Normal Issue</option>
+                <option value="exceptional" @selected(($filters['issue_type'] ?? '') === 'exceptional')>Exceptional Issue</option>
+            </select>
+        </div>
         <div class="col-12 col-sm-auto">
             <div class="filter-actions">
                 <button class="btn btn-primary">Search</button>

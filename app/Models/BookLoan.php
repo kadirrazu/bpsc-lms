@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BookLoan extends Model {
  protected $attributes=['quantity'=>1];
  protected $fillable=['book_id','user_id','quantity','issued_at','returned_at'];
- protected function casts(): array {return ['quantity'=>'integer','issued_at'=>'datetime','returned_at'=>'datetime','due_at'=>'datetime','limit_override_at'=>'datetime','active_count_at_issue'=>'integer','authors_snapshot'=>'array','renewal_count'=>'integer','renewed_at'=>'datetime','is_fined'=>'boolean','fined_at'=>'datetime'];}
+ protected function casts(): array {return ['quantity'=>'integer','issued_at'=>'datetime','returned_at'=>'datetime','due_at'=>'datetime','limit_override_at'=>'datetime','active_count_at_issue'=>'integer','exceptional_limit'=>'integer','exceptional_total_after'=>'integer','authors_snapshot'=>'array','renewal_count'=>'integer','renewed_at'=>'datetime','is_fined'=>'boolean','fined_at'=>'datetime'];}
  public ?string $requestedAccession = null;
+ public ?User $exceptionalOperator = null;
  public function book(): BelongsTo {return $this->belongsTo(Book::class)->withTrashed();}
  public function issuer(): BelongsTo {return $this->belongsTo(User::class,'issued_by')->withTrashed();}
  public function reminder(){return $this->hasOne(LoanReminder::class,'loan_id');}
@@ -25,6 +26,15 @@ class BookLoan extends Model {
     throw ValidationException::withMessages(['loan'=>'Soft copies are downloaded, not issued.']);
    }
    $newBorrowing = !$this->exists || $this->isDirty(['user_id','quantity']);
+   $exceptional = ! $this->exists && $this->exceptionalOperator !== null;
+   if ($exceptional) {
+    abort_unless($this->exceptionalOperator->is_active && $this->exceptionalOperator->role === \App\Enums\UserRole::Librarian, 403);
+    if (blank($this->requestedAccession) || blank($this->exceptional_reason)) {
+     throw ValidationException::withMessages(['exceptional_reason' => 'Select a copy and enter the reason for this exceptional issue.']);
+    }
+    $this->limit_override_by = $this->exceptionalOperator->id;
+    $this->limit_override_at = now();
+   }
    if($newBorrowing && !in_array($this->getAttributes()['quantity'] ?? null, [1, '1'], true)){
     throw ValidationException::withMessages(['quantity'=>'Each loan must issue exactly one copy of a book.']);
    }
@@ -57,15 +67,15 @@ class BookLoan extends Model {
     if($issued+(int)$this->quantity>$book->number_of_copies)throw ValidationException::withMessages(['quantity'=>'There are not enough available copies.']);
     if($newBorrowing){
      $active = self::where('user_id',$borrower->id)->whereNull('returned_at')
-      ->when($this->exists,fn($q)=>$q->whereKeyNot($this->id))->lockForUpdate()->pluck('book_id')->unique();
-     if($active->contains($book->id)){
+      ->when($this->exists,fn($q)=>$q->whereKeyNot($this->id))->lockForUpdate()->get(['book_id', 'quantity']);
+     if(! $exceptional && $active->contains('book_id', $book->id)){
       throw ValidationException::withMessages(['loan'=>'This book is already on loan to this member.']);
      }
      $limit = app(BorrowingPolicy::class)->limit();
-     if($active->count() >= $limit){
+     if(! $exceptional && $active->sum('quantity') >= $limit){
       throw ValidationException::withMessages(['loan'=>"The member has reached the configured borrowing limit of $limit books."]);
      }
-     $this->active_count_at_issue = $active->count();
+     $this->active_count_at_issue = $active->sum('quantity');
     }
    }
    return parent::save($options);

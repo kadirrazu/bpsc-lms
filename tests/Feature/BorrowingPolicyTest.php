@@ -101,7 +101,7 @@ class BorrowingPolicyTest extends TestCase {
   $unit=Unit::where('name','Unit 01')->firstOrFail();
   $member->update(['designation_id'=>$designation->id,'unit'=>$unit->code]);
   $this->getJson(route('loans.options',['kind'=>'members','q'=>$member->email]))->assertOk()
-   ->assertExactJson(['results'=>[['id'=>$member->id,'label'=>$member->name.' - Assistant Director - Unit 01 - #'.$member->membership_number]]]);
+   ->assertExactJson(['results'=>[['id'=>$member->id,'label'=>$member->name.' - Assistant Director - Unit 01 - #'.$member->membership_number,'on_loan'=>0,'pending_requests'=>0]]]);
   $this->postIssue(['member_id'=>$member->id,'book_id'=>$book->id,'due_at'=>now()->addYear()->toDateTimeString()])->assertRedirect();
   $loan=BookLoan::firstOrFail();$this->assertTrue($loan->due_at->equalTo($loan->issued_at->copy()->addDays(15)));$this->assertDatabaseHas('book_issue_requests',['loan_id'=>$loan->id,'source'=>'staff_issue','status'=>'approved']);
  }

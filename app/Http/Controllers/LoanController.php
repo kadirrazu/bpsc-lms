@@ -29,6 +29,8 @@ class LoanController extends Controller
             'book' => $books->first(),
             'member' => $member,
             'memberLabel' => $member ? $this->memberLabel($member) : '',
+            'memberOnLoan' => $member ? (int) $member->loans()->whereNull('returned_at')->sum('quantity') : 0,
+            'memberPendingRequests' => $member ? \App\Models\BookIssueRequest::where('user_id', $member->id)->where('status', 'pending')->count() : 0,
         ]);
     }
 
@@ -44,10 +46,18 @@ class LoanController extends Controller
             'copy_accessions.*' => 'nullable|string|max:100',
             'quantity' => 'sometimes|required|integer|in:1',
             'confirmed' => 'required|accepted',
+            'exceptional_issue' => 'sometimes|boolean',
+            'exceptional_reason' => 'nullable|string|max:1000',
+            'additional_copy_accessions' => 'sometimes|array|max:100',
+            'additional_copy_accessions.*' => 'array|max:99',
+            'additional_copy_accessions.*.*' => 'required|string|max:100',
         ]);
 
         $ids = array_values(array_map('intval', $data['book_ids'] ?? [$data['book_id']]));
-        $loans = $issuer->issue($request->user(), $ids, (int) $data['member_id'], copyAccessions: $data['copy_accessions'] ?? []);
+        $loans = $issuer->issue($request->user(), $ids, (int) $data['member_id'], copyAccessions: $data['copy_accessions'] ?? [],
+            exceptional: $request->boolean('exceptional_issue'),
+            reason: $data['exceptional_reason'] ?? null,
+            additionalAccessions: $data['additional_copy_accessions'] ?? []);
         $message = $loans->count() === 1 ? 'Book issued.' : $loans->count().' books issued.';
 
         return redirect()->route('issue-requests.index')->with('issue_receipt_loan', $loans->first()->id)->with('success', $message.' Accession: '.$loans->pluck('accession_snapshot')->implode(', ').'. Due: '.Ui::date($loans->first()->due_at));
@@ -59,26 +69,36 @@ class LoanController extends Controller
         $data = $request->validate([
             'q' => 'nullable|string|max:150',
             'member_id' => 'nullable|integer',
+            'exceptional_issue' => 'sometimes|boolean',
             'exclude' => 'nullable|array|max:100',
             'exclude.*' => 'integer',
         ]);
+        $exceptional = $request->boolean('exceptional_issue');
+        abort_if($exceptional && $request->user()->role !== UserRole::Librarian, 403);
         $term = trim($data['q'] ?? '');
         $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term).'%';
 
         if ($kind === 'members') {
-            $rows = User::with('designation')->where('role', UserRole::Member->value)->where('is_active', true)
+            $rows = User::with('designation')->addSelect([
+                'open_loans' => BookLoan::selectRaw('COALESCE(SUM(quantity), 0)')->whereColumn('user_id', 'users.id')->whereNull('returned_at'),
+                'pending_requests' => \App\Models\BookIssueRequest::selectRaw('COUNT(*)')->whereColumn('user_id', 'users.id')->where('status', 'pending'),
+            ])->where('role', UserRole::Member->value)->where('is_active', true)
                 ->when($term !== '', fn ($query) => $query->where(fn ($user) => $user
                     ->whereRaw("name LIKE ? ESCAPE '!'", [$pattern])
                     ->orWhereRaw("email LIKE ? ESCAPE '!'", [$pattern])
                     ->orWhereRaw("mobile_number LIKE ? ESCAPE '!'", [$pattern])
                     ->orWhereRaw("membership_number LIKE ? ESCAPE '!'", [$pattern])))
                 ->orderBy('name')->orderBy('id')->limit(20)->get()
-                ->map(fn ($user) => ['id' => $user->id, 'label' => $this->memberLabel($user)]);
+                ->map(fn ($user) => [
+                    'id' => $user->id, 'label' => $this->memberLabel($user),
+                    'on_loan' => (int) $user->open_loans,
+                    'pending_requests' => (int) $user->pending_requests,
+                ]);
         } else {
             $onLoan = $this->activeCopies();
             $rows = Book::addSelect(['active_copies' => $onLoan])->where('format','hard')->where('number_of_copies', '>', $onLoan)
                 ->whereNotIn('id', $data['exclude'] ?? [])
-                ->when(isset($data['member_id']), fn ($query) => $query->whereDoesntHave('loans', fn ($loan) => $loan
+                ->when(! $exceptional && isset($data['member_id']), fn ($query) => $query->whereDoesntHave('loans', fn ($loan) => $loan
                     ->where('user_id', $data['member_id'])->whereNull('returned_at')))
                 ->when($term !== '', fn ($query) => $query->where(function ($book) use ($pattern) {
                     foreach (['title_bn', 'title_en', 'accession_number', 'call_number'] as $field) {

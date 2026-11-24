@@ -26,6 +26,9 @@ class IssueRegisterController extends Controller {
   'issued_on' => 'Issue Date and Time', 'due' => 'Due Date and Time',
   'returned_on' => 'Return Date and Time', 'issuer' => 'Issued By',
   'renewals' => 'Renewal Count', 'fine' => 'Fine Flag', 'reminder' => 'Last Reminder',
+  'issue_type' => 'Issue Type', 'exceptional_reason' => 'Exceptional Issue Reason',
+  'configured_limit' => 'Configured Limit at Issue', 'on_loan_before' => 'On Loan Before This Copy',
+  'total_after' => 'On Loan After Operation',
  ];
 
  private function query(Request $request): array
@@ -34,6 +37,7 @@ class IssueRegisterController extends Controller {
    'q' => 'nullable|string|max:150',
    'status' => 'nullable|in:on_loan,returned',
    'fine' => 'nullable|in:flagged,clear',
+   'issue_type' => 'nullable|in:normal,exceptional',
    'from' => 'nullable|date_format:Y-m-d',
    'to' => ['nullable', 'date_format:Y-m-d', ...($request->filled('from') ? ['after_or_equal:from'] : [])],
    'sort' => ['nullable', Rule::in(array_keys(self::SORT_OPTIONS))],
@@ -49,6 +53,13 @@ class IssueRegisterController extends Controller {
    $query->whereNull('returned_at');
   } elseif (($filters['status'] ?? null) === 'returned') {
    $query->whereNotNull('returned_at');
+  }
+  if (isset($filters['issue_type'])) {
+   if ($filters['issue_type'] === 'exceptional') {
+    $query->whereNotNull('exceptional_reason');
+   } else {
+    $query->whereNull('exceptional_reason');
+   }
   }
   if (isset($filters['fine'])) {
    $query->where('is_fined', $filters['fine'] === 'flagged');
@@ -107,7 +118,7 @@ class IssueRegisterController extends Controller {
      ? [
       'book' => 'Title / Accession / Authors', 'member' => 'Member',
       'issued_on' => 'Issued at', 'due' => 'Due at', 'returned_on' => 'Returned at',
-      'issuer' => 'Issued By', 'renewals' => 'Renewals', 'fine' => 'Fine Flag', 'reminder' => 'Last Reminder',
+      'issuer' => 'Issued By', 'issue_type' => 'Issue Type', 'exceptional_reason' => 'Reason', 'renewals' => 'Renewals', 'fine' => 'Fine Flag', 'reminder' => 'Last Reminder',
      ]
      : self::EXPORT_COLUMNS,
     'rows' => $loans->map(fn (BookLoan $loan) => (object) $this->exportRow($loan)),
@@ -152,6 +163,11 @@ class IssueRegisterController extends Controller {
    'renewals' => (int) $loan->renewal_count,
    'fine' => $loan->is_fined ? 'Yes' : 'No',
    'reminder' => $loan->reminder?->sent_at?->format('Y-m-d H:i:s'),
+   'issue_type' => $loan->exceptional_reason ? 'Exceptional Issue' : 'Normal Issue',
+   'exceptional_reason' => $loan->exceptional_reason,
+   'configured_limit' => $loan->exceptional_limit,
+   'on_loan_before' => $loan->active_count_at_issue,
+   'total_after' => $loan->exceptional_total_after,
    'book' => implode("\n", array_filter([$title, $accession, $authors], fn ($value) => filled($value))),
   ];
  }

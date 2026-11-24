@@ -33,7 +33,7 @@ class BookIssueRequestController extends Controller {
    $current=Book::whereKey($book->id)->lockForUpdate()->firstOrFail();
    if ($current->isSoftCopy()) throw ValidationException::withMessages(['request' => 'Soft copies are available for download.']);
    $borrower=User::whereKey($r->user()->id)->lockForUpdate()->firstOrFail();
-   $active=(int)BookLoan::where('user_id',$borrower->id)->whereNull('returned_at')->distinct()->count('book_id');
+   $active=(int)BookLoan::where('user_id',$borrower->id)->whereNull('returned_at')->sum('quantity');
    $pending=BookIssueRequest::where('user_id',$borrower->id)->where('status','pending')->count();
    if($active+$pending>=app(\App\Services\Library\BorrowingPolicy::class)->limit())throw ValidationException::withMessages(['request'=>'You may borrow at most '.app(\App\Services\Library\BorrowingPolicy::class)->limit().' books at a time for '.app(\App\Services\Library\BorrowingPolicy::class)->days().' days. You currently have '.$active.' on loan and '.$pending.' pending requests. Return a book or withdraw a pending request before requesting another.']);
    if(BookIssueRequest::where('book_id',$current->id)->where('user_id',$r->user()->id)->where('status','pending')->exists())throw ValidationException::withMessages(['request'=>'You already have a pending request for this book.']);

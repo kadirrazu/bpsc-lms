@@ -43,7 +43,9 @@
         function display() {
             if (accessions === null || search.disabled || registrationRequired) return;
             const term = value.value ? '' : search.value.trim().toLowerCase();
-            matches = accessions.filter(number => number.toLowerCase().includes(term));
+            const otherSelections = [...root.closest('form').querySelectorAll('[data-issued-copy]')]
+                .filter(input => input !== value).map(input => input.value);
+            matches = accessions.filter(number => number.toLowerCase().includes(term) && !otherSelections.includes(number));
             close();
             options.replaceChildren(...matches.map((number, index) => {
                 const option = document.createElement('div');

@@ -16,3 +16,28 @@
 .circulation-dialog [data-confirm-books] { max-height: 35vh; overflow-y: auto; overflow-wrap: anywhere; }
 
 .loan-desk-serial { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 50%; background: #e9f0fd; font-weight: 600; }
+
+.borrowing-summary { display: flex; flex-wrap: wrap; gap: .6rem; }
+.borrowing-summary[hidden] { display: none; }
+.borrowing-badge { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .35rem; padding: .55rem .75rem; border: 1px solid; border-radius: .6rem; font-size: .82rem; line-height: 1.5; font-weight: 500; }
+.borrowing-badge strong { font-size: .95rem; font-weight: 750; }
+.borrowing-badge-limit { background: #edf2ff; border-color: #cbd8fa; color: #304f99; }
+.borrowing-badge-loan { background: #e7f5f4; border-color: #b9dfdc; color: #17665f; }
+.borrowing-badge-pending { background: #fff5df; border-color: #ecd39c; color: #80530b; }
+.borrowing-badge-total { background: #f2edfc; border-color: #d8c9ee; color: #634392; }
+.loan-desk-info { display: flex; align-items: flex-start; gap: .7rem; padding: .95rem 1rem; border: 1px solid #bddce9; border-inline-start: 4px solid #3782a1; border-radius: .65rem; background: #edf7fb; color: #25566c; font-size: .87rem; line-height: 1.65; }
+.loan-desk-info > i { flex-shrink: 0; font-size: 1.1rem; }
+.exceptional-issue-panel { margin: 1.25rem clamp(1rem, 3vw, 1.65rem) 0; padding: 1.2rem; border: 1px solid #d5c5ec; border-inline-start: 4px solid #7750aa; border-radius: .8rem; background: #f6f1fc; }
+.exceptional-issue-heading { display: flex; align-items: flex-start; gap: 1rem; }
+.exceptional-issue-icon { display: grid; place-items: center; width: 2.65rem; height: 2.65rem; flex-shrink: 0; border-radius: .7rem; background: #e8ddf7; color: #684094; font-size: 1.4rem; }
+.exceptional-issue-switch { margin-bottom: .45rem; min-height: 1.6rem; }
+.exceptional-issue-switch .form-check-label { color: #55337d; font-size: 1.05rem; font-weight: 750; line-height: 1.5; cursor: pointer; }
+.exceptional-issue-switch .form-check-input { width: 2.4rem; height: 1.3rem; cursor: pointer; }
+.exceptional-issue-switch .form-check-input:checked { background-color: #7750aa; border-color: #7750aa; }
+.exceptional-issue-switch .form-check-input:focus-visible { outline: 3px solid #bca0de; outline-offset: 3px; }
+.exceptional-issue-help { margin: 0; color: #634b7f; font-size: .9rem; line-height: 1.65; }
+@media (max-width: 575px) {
+    .borrowing-badge { flex: 1 1 100%; }
+    .exceptional-issue-heading { gap: .7rem; }
+    .exceptional-issue-icon { width: 2.1rem; height: 2.1rem; font-size: 1.15rem; }
+}
