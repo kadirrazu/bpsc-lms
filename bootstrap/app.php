@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(web: __DIR__.'/../routes/web.php', commands: __DIR__.'/../routes/console.php')
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(SecurityHeaders::class);
+        $middleware->trimStrings(except: ['confirmation']);
         $middleware->web(append: [SetLocale::class, AuditActivity::class, ActiveStaffAccount::class]);
         $middleware->api(prepend: [SetLocale::class, AuditActivity::class]);
     })

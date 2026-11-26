@@ -95,15 +95,19 @@ class CatalogImportAndAdminTest extends TestCase {
   $this->artisan('library:create-admin')->expectsOutput('No active designations found. Run php artisan db:seed --class=DesignationSeeder first.')->assertExitCode(1);$this->assertDatabaseCount('users',0);
  }
 
- public function test_import_rejects_existing_and_archived_accession_without_partial_writes(): void {
+ public function test_import_rejects_existing_accession_and_accepts_reuse_after_deletion(): void {
   $this->login();$this->masterData();
   $this->importUpload('books',['file'=>$this->upload(CatalogImport::BOOK_HEADERS,[$this->bookRow()])])->assertRedirect(route('books.index'));
   $existing=Book::firstOrFail();
-  foreach([false,true] as $archived){
-   if($archived)$existing->delete();
-   $file=$this->upload(CatalogImport::BOOK_HEADERS,[$this->bookRow('000002'),$this->bookRow()]);
-   $this->importUpload('books',['file'=>$file])->assertSessionHasErrors('file');
-   $this->assertSame(1,Book::withTrashed()->count());$this->assertDatabaseMissing('books',['accession_number'=>'000002']);
-  }
+  $file=$this->upload(CatalogImport::BOOK_HEADERS,[$this->bookRow('000002'),$this->bookRow()]);
+  $this->importUpload('books',['file'=>$file])->assertSessionHasErrors('file');
+  $this->assertSame(1,Book::withTrashed()->count());
+  $this->assertDatabaseMissing('books',['accession_number'=>'000002']);
+  $existing->delete();
+  $file=$this->upload(CatalogImport::BOOK_HEADERS,[$this->bookRow('000002'),$this->bookRow()]);
+  $this->importUpload('books',['file'=>$file])->assertRedirect(route('books.index'))->assertSessionHasNoErrors();
+  $this->assertSame(3,Book::withTrashed()->count());
+  $this->assertSame(2,Book::count());
  }
+
 }

@@ -1,0 +1,36 @@
+.book-delete-dialog {
+    position: fixed;
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    margin: 0;
+    transform: translate(-50%, -50%);
+    border: 1px solid #e4c8cc;
+    border-radius: 1rem;
+    padding: 0;
+    width: min(520px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    color: var(--tblr-body-color, #182433);
+    background: var(--tblr-bg-surface, #fff);
+    box-shadow: 0 20px 65px rgba(35, 25, 35, .25);
+}
+.book-delete-dialog:not([open]) { display: none; }
+.book-delete-dialog[open] { animation: book-delete-enter .22s ease-out both; }
+.book-delete-dialog::backdrop {
+    background: rgba(15, 29, 52, .55);
+    animation: book-delete-backdrop-enter .22s ease-out both;
+}
+.book-delete-content { padding: 1.5rem; overflow-wrap: anywhere; }
+.book-delete-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .75rem; padding: 1rem 1.5rem; border-top: 1px solid #e7e9ee; }
+@keyframes book-delete-enter {
+    from { opacity: 0; transform: translate(-50%, calc(-50% + 12px)) scale(.98); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes book-delete-backdrop-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .book-delete-dialog[open], .book-delete-dialog::backdrop { animation: none; }
+}

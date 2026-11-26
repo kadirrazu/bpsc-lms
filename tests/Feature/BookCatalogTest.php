@@ -111,12 +111,31 @@ class BookCatalogTest extends TestCase
         $this->assertDatabaseCount('books', 0);
     }
 
-    public function test_accession_number_is_unique_including_deleted_book_history(): void
+    public function test_accession_number_is_unique_and_reusable_after_deletion(): void
     {
         $this->loginRole();$book = $this->book();
         $this->post('/books', $this->data())->assertSessionHasErrors('accession_number');
+        $loan = $this->loan($book);
+        $loan->update(['returned_at' => now()]);
+        $originalCopy = $loan->book_copy_id;
         $this->delete('/books/'.$book->id, ['confirmation' => 'DELETE'])->assertRedirect('/books');
+        $this->post('/books', $this->data())->assertRedirect()->assertSessionHasNoErrors();
+        $replacement = Book::where('accession_number', '000123')->firstOrFail();
+        $this->assertNotSame($book->id, $replacement->id);
+        $this->assertSame('000123', Book::withTrashed()->findOrFail($book->id)->accession_number);
+        $this->assertSame($originalCopy, $loan->fresh()->book_copy_id);
+        $this->assertSame('000123', $loan->fresh()->accession_snapshot);
+        $this->assertSame(3, $replacement->copies()->whereNull('accession_released_at')->count());
         $this->post('/books', $this->data())->assertSessionHasErrors('accession_number');
+        $this->get('/issue-register')->assertOk()->assertSee('000123');
+        try {
+            Book::withTrashed()->findOrFail($book->id)->restore();
+            $this->fail('A reused accession must block restoration.');
+        } catch (ValidationException $error) {
+            $this->assertArrayHasKey('accession_number', $error->errors());
+        }
+        $this->delete('/books/'.$replacement->id, ['confirmation' => 'DELETE'])->assertRedirect();
+        $this->assertTrue(Book::withTrashed()->findOrFail($book->id)->restore());
     }
 
     public function test_live_search_matches_bn_en_and_any_related_author_or_category(): void
@@ -330,8 +349,8 @@ class BookCatalogTest extends TestCase
         $this->put('/books/'.$second->id,$this->data('001'))->assertSessionHasErrors('accession_number');
         $this->assertSame('002',$second->fresh()->accession_number);
         $this->delete('/books/'.$first->id,['confirmation'=>'DELETE'])->assertRedirect('/books');
-        $this->put('/books/'.$second->id,$this->data('001'))->assertSessionHasErrors('accession_number');
-        $this->assertSame('002',$second->fresh()->accession_number);
+        $this->put('/books/'.$second->id,$this->data('001'))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('001',$second->fresh()->accession_number);
     }
     public function test_registered_copies_are_searchable_unique_and_allocated_to_the_correct_loans(): void
     {
@@ -497,7 +516,48 @@ class BookCatalogTest extends TestCase
     {
         $this->loginRole();$first=$this->book();$data=$first->only(['accession_number','title_bn','publisher_id','call_number','number_of_copies']);
         $first->delete();
+        \Illuminate\Support\Facades\DB::table('books')->insert($data);
         $this->expectException(\Illuminate\Database\QueryException::class);
         \Illuminate\Support\Facades\DB::table('books')->insert($data);
     }
+    public function test_migration_releases_accessions_from_previously_deleted_books(): void
+    {
+        $this->loginRole();
+        $book = $this->book();
+        $migration = require database_path('migrations/2026_11_26_000000_release_deleted_book_accessions.php');
+        $migration->down();
+        DB::table('books')->where('id', $book->id)->update(['deleted_at' => now()]);
+        $migration->up();
+
+        $this->assertSame(3, $book->copies()->whereNotNull('accession_released_at')->count());
+        $this->post('/books', $this->data())->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(2, Book::withTrashed()->where('accession_number', '000123')->count());
+        $replacement = Book::where('accession_number', '000123')->firstOrFail();
+        try {
+            $replacement->copies()->create(['accession_number' => '000123', 'is_active' => true]);
+            $this->fail('The database must reject a duplicate reserved copy accession.');
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $error) {
+            $this->assertSame(3, $replacement->copies()->count());
+        }
+    }
+
+    public function test_book_deletion_requires_an_exact_typed_confirmation(): void
+    {
+        $this->loginRole();
+        $book = $this->book();
+        $this->get('/books/'.$book->id)->assertOk()
+            ->assertSee('data-book-delete-open', false)
+            ->assertSee('name="confirmation"', false)
+            ->assertDontSee('name="confirmation" value="DELETE"', false);
+        foreach (['', 'delete', 'Delete', ' DELETE', 'DELETE ', 'DELET'] as $value) {
+            $this->delete('/books/'.$book->id, ['confirmation' => $value])
+                ->assertSessionHasErrors('confirmation');
+            $this->assertFalse($book->fresh()->trashed());
+            $this->assertSame(3, $book->copies()->whereNull('accession_released_at')->count());
+        }
+        $this->delete('/books/'.$book->id, ['confirmation' => 'DELETE'])
+            ->assertRedirect('/books')->assertSessionHasNoErrors();
+        $this->assertSoftDeleted($book);
+    }
+
 }

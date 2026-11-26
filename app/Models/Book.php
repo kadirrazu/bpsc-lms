@@ -4,7 +4,7 @@ use Illuminate\Database\Eloquent\{Model,SoftDeletes};
 use Illuminate\Database\Eloquent\Relations\{BelongsTo,BelongsToMany,HasMany};
 use Illuminate\Validation\ValidationException;
 class Book extends Model {
- use SoftDeletes;
+ use SoftDeletes { restore as protected restoreRecord; }
  public const PRINTED_CURRENCIES = ['BDT'=>'৳ (BDT)', 'USD'=>'$ (USD)', 'EUR'=>'€ (EUR)', 'INR'=>'₹ (INR)', 'CNY'=>'¥ (CNY)'];
  public function isSoftCopy(): bool {return $this->format === 'soft';}
  public function copies(): HasMany {return $this->hasMany(BookCopy::class);}
@@ -14,7 +14,7 @@ class Book extends Model {
  }
  public function availableCopies(): HasMany
  {
-  return $this->copies()->where('is_active', true)
+  return $this->copies()->whereNull('accession_released_at')->where('is_active', true)
    ->whereDoesntHave('loans', fn ($loans) => $loans->whereNull('returned_at'));
  }
  protected $attributes=['number_of_copies'=>1,'total_issue_count'=>0,'format'=>'hard','printed_currency'=>'BDT','download_count'=>0];
@@ -25,7 +25,40 @@ class Book extends Model {
  public function categories(): BelongsToMany {return $this->belongsToMany(Category::class,'book_categories')->orderBy('title_bn');}
  public function loans(): HasMany {return $this->hasMany(BookLoan::class);}
  public function activeLoanQuantity(): int {return (int)$this->loans()->whereNull('returned_at')->sum('quantity');}
+ public function delete()
+ {
+  if (! $this->exists) {
+   return parent::delete();
+  }
+  return \Illuminate\Support\Facades\DB::transaction(function () {
+   static::withTrashed()->whereKey($this->getKey())->lockForUpdate()->firstOrFail();
+   return parent::delete();
+  });
+ }
+
+ public function restore()
+ {
+  return \Illuminate\Support\Facades\DB::transaction(function () {
+   static::withTrashed()->whereKey($this->getKey())->lockForUpdate()->firstOrFail();
+   $numbers = $this->copies()->pluck('accession_number')->push($this->accession_number)->unique()->all();
+   $conflict = BookCopy::whereNull('accession_released_at')->where('book_id', '<>', $this->id)
+    ->whereIn('accession_number', $numbers)->exists()
+    || static::whereKeyNot($this->id)->whereIn('accession_number', $numbers)->exists();
+   if ($conflict) {
+    throw ValidationException::withMessages(['accession_number' => 'An accession from this archived book is already in use.']);
+   }
+   $restored = $this->restoreRecord();
+   if ($restored) {
+    $this->copies()->update(['accession_released_at' => null]);
+   }
+   return $restored;
+  });
+ }
+
  protected static function booted(): void {
+  static::deleted(function (self $book) {
+   $book->copies()->update(['accession_released_at' => now()]);
+  });
   static::deleting(function(self $book){if($book->loans()->whereNull('returned_at')->exists())throw ValidationException::withMessages(['book'=>'This book is currently issued and cannot be deleted. Return all issued copies first.']);});
  }
 }

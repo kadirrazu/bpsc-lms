@@ -14,7 +14,7 @@ class BookRequest extends FormRequest {
   'printed_price'=>'nullable|numeric|min:0|max:9999999999.99|decimal:0,2',
   'printed_currency'=>['nullable',Rule::in(array_keys(Book::PRINTED_CURRENCIES))],
   'pdf'=>[$soft && !$book?->pdf_path ? 'required' : 'nullable','bail','file','extensions:pdf,epub','max:51200',Rule::prohibitedIf(!$soft),new \App\Rules\DigitalBookFile],
-  'accession_number'=>['required','string','max:100',Rule::unique('books','accession_number')->ignore($this->route('book')?->id)],
+  'accession_number'=>['required','string','max:100',Rule::unique('books','accession_number')->withoutTrashed()->ignore($this->route('book')?->id)],
   'title_bn'=>'required|string|max:255','title_en'=>'nullable|string|max:255',
   'author_ids'=>'required|array|min:1|max:50','author_ids.*'=>'required|integer|distinct|exists:authors,id','publisher_id'=>'required|integer|exists:publishers,id','category_ids'=>'required|array|min:1|max:50','category_ids.*'=>'required|integer|distinct|exists:categories,id',
   'call_number'=>$soft ? 'nullable|string|max:100' : 'required|string|max:100','shelf_number'=>'nullable|string|max:100','publication_year'=>'nullable|integer|min:1|max:9999',

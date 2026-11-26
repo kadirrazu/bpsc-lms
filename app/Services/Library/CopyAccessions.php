@@ -34,9 +34,9 @@ class CopyAccessions
         }
         // Check the catalog column too, including records created by older integrations.
         foreach (array_chunk($numbers, 200) as $chunk) {
-            $conflict = BookCopy::whereIn('accession_number', $chunk)
+            $conflict = BookCopy::whereNull('accession_released_at')->whereIn('accession_number', $chunk)
                 ->when($bookId, fn ($query) => $query->where('book_id', '<>', $bookId))->value('accession_number')
-                ?? Book::withTrashed()->whereIn('accession_number', $chunk)
+                ?? Book::whereIn('accession_number', $chunk)
                     ->when($bookId, fn ($query) => $query->whereKeyNot($bookId))->value('accession_number');
             if ($conflict !== null) {
                 throw ValidationException::withMessages([$field => "Accession $conflict is already in use or reserved."]);
